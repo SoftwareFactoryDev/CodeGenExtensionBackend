@@ -19,7 +19,7 @@ def main():
             prompt = code_gen_retlist
             prompt.generate_prompt(user_param={'req_list':req_cont})
             messages = prompt.generate_message()
-            response = generate_api(messages, host='http://10.13.1.104:14516/v1/')
+            response = generate_api(messages, host='http://127.0.0.1:14516/v1/')
             response = response.split('</think>')[-1]
             result.append(
                 {

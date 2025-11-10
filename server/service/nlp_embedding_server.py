@@ -5,7 +5,7 @@ import json
 import socket
 import struct
 import torch
-from sentence_transformers import SentenceTransformer
+from  import SentenceTransformer
 
 HOST = '0.0.0.0'
 PORT = 14514

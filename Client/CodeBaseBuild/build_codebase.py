@@ -133,4 +133,4 @@ def get_repository(repo_url, destination='./repos'):
     print('Start cloning repository...')
     Repo.clone_from(repo_url, destination)
     print('Repository cloned to', destination)
-    return True
+    return destination  

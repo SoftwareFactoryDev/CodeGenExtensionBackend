@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
-# server_roberta.py
 import os
 import json
 import socket
 import struct
 import torch
-from  import SentenceTransformer
+from sentence_transformers import SentenceTransformer
 
 HOST = '0.0.0.0'
 PORT = 14514

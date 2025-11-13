@@ -1,8 +1,8 @@
 import json
 
-from CodeGeneration.prompt import code_gen_retlist
-from CodeGeneration.content_process import req_list_content
-from CodeGeneration.generation import generate_api
+from client.CodeGeneration.prompt import code_gen_retlist
+from client.CodeGeneration.content_process import req_list_content
+from client.CodeGeneration.generation import generate_api
 
 def main():
     with open('requirements.json', 'r', encoding='utf-8') as f:

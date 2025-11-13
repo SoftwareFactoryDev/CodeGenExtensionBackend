@@ -1,6 +1,6 @@
 from CodeGeneration.prompt import code_gen_instruct
 from CodeBaseBuild.llm_gen import generate_api
-from CodeBaseBuild.code_search import code_search
+from client.CodeSearch.code_search import code_search
 def generate_raw(requirement):
     
     prompt_tem = code_gen_instruct

@@ -33,9 +33,9 @@ def main():
     {req_cont}
     {response}
                 """)
-        with open(f'./result/result-{size}.json', 'w', encoding='utf-8') as f:
+        with open(f'E:/Work/lab/20250320-20251201-AI赋能机载软件研发三年规划/20251030-20251130-产品研发/Result/RequireUnderstand/result-{size}.json', 'w', encoding='utf-8') as f:
             json.dump(result, f, ensure_ascii=False, indent=2)
-        with open(f'./result/result-{size}.txt', 'w', encoding='utf-8') as f:
+        with open(f'E:/Work/lab/20250320-20251201-AI赋能机载软件研发三年规划/20251030-20251130-产品研发/Result/RequireUnderstand/result-{size}.txt', 'w', encoding='utf-8') as f:
             for index, item in enumerate(result):
                 f.write(f'【{index+1}/{len(req_list)}】{item["length"]}\n{item["req_list"]}\n{item["response"]}\n\n')
 

@@ -10,18 +10,19 @@ class NlRetriever:
     def data_import(self, data:pd.DataFrame):
         self.data = data
 
-    def bm25_compute(self, key_words, summary) -> float:
+    def bm25_compute(self, key_words, doc_tokens) -> float:
        
         key_words_tokens = []
         for key_word in key_words:
             key_words_tokens += list(jieba.cut_for_search(key_word))
-        doc_tokens = list(jieba.cut_for_search(summary.replace('，','').replace('。','').replace('！','').replace('？','')))
         bm25 = BM25Okapi([doc_tokens])
         score = bm25.get_scores(key_words_tokens)
         return score[0]
     
     def retrieval(self, query_texts, top_k=20):
-        self.data['bm25_score'] = self.data['summary'].apply(
+        if isinstance(query_texts, str):
+            query_texts = [query_texts]
+        self.data['bm25_score'] = self.data['sum_tokenize'].apply(
             lambda x: self.bm25_compute(query_texts, x)
         )
         result = self.data.sort_values('bm25_score', ascending=True)

@@ -5,6 +5,7 @@ import glob
 
 from git import Repo
 from copy import deepcopy
+import jieba
 
 from CodeBaseBuild.CParser import CParser
 from CodeBaseBuild.prompt import function_sum_template
@@ -84,9 +85,13 @@ def gen_sum(codebase_path):
         row['summary'] = summary.strip()
     codebase.to_csv(codebase_path, index=True, encoding='utf-8')
 
-def sum_embedding(codebase_path):
+def sum_tokenize(codebase_path):
     codebase = pd.read_csv(codebase_path)
-    codebase['sum,_embedding'] = codebase['summary'].apply(lambda x: generate_api([{'role':'user', 'content': f'将摘要{str(x)}转化为向量'}]))
+    codebase['sum_embedding'] = codebase['summary'].apply(lambda x: generate_api([{'role':'user', 'content': f'将摘要{str(x)}转化为向量'}]))
+
+def sum_tokenize(codebase_path):
+    codebase = pd.read_csv(codebase_path)
+    codebase['sum_tokenize'] = codebase['summary'].apply(lambda x: jieba.cut_for_search(x))
 
 def json_parse(content):
 
@@ -120,7 +125,7 @@ def build_code_base(repo_path, lib_path, output_path):
         result = repo_parse(repo_path, lib_path, output_path)
         print(result)
     gen_sum(codebase_path=output_path)
-    sum_embedding(codebase_path=output_path)
+    sum_tokenize(codebase_path=output_path)
 
 def get_repository(repo_url, destination='./repos'):
     if not os.path.exists(destination):

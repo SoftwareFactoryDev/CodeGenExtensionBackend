@@ -1,5 +1,5 @@
-from CodeGeneration.prompt import code_gen_instruct
-from CodeBaseBuild.llm_gen import generate_api
+from client.CodeGeneration.prompt import code_gen_instruct
+from client.CodeBaseBuild.llm_gen import generate_api
 from client.CodeSearch.code_search import code_search
 def generate_raw(requirement):
     

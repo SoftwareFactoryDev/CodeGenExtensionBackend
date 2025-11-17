@@ -15,7 +15,7 @@ class BuildResponse(BaseModel):
 
 class GenerateRequest(BaseModel):
     prompt: str
-    template: Optional[str] = None
+    history: Optional[str] = None
 
 class GenerateResponse(BaseModel):
     code: str

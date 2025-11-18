@@ -120,12 +120,12 @@ def build_code_base(repo_path, lib_path, output_path):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     if os.path.exists(output_path):
-        print(f'代码库{os.path.basename(repo_path)}已存在，跳过解析步骤。')
+        result = (f'代码库{os.path.basename(repo_path)}已存在，跳过解析步骤，仅进行数据解析。')
     else:
         result = repo_parse(repo_path, lib_path, output_path)
-        print(result)
     gen_sum(codebase_path=output_path)
     sum_tokenize(codebase_path=output_path)
+    return result
 
 def get_repository(repo_url, destination='./repos'):
     if not os.path.exists(destination):

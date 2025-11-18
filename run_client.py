@@ -1,7 +1,7 @@
 import json
 
 from client.CodeGeneration.prompt import code_gen_retlist
-from client.CodeGeneration.content_process import req_list_content
+from client.CodeGeneration.content_process import history_content
 from client.CodeGeneration.generation import generate_api
 
 def main():
@@ -15,7 +15,7 @@ def main():
     for size in range(5, len(req_list), group_size):
         for index in range(0, len(req_list), size):
             req_group = req_list[index:index+size]
-            req_cont = req_list_content(req_group)
+            req_cont = history_content(req_group)
             prompt = code_gen_retlist
             prompt.generate_prompt(user_param={'req_list':req_cont})
             messages = prompt.generate_message()

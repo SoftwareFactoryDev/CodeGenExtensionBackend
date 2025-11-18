@@ -29,11 +29,11 @@ class NlRetriever:
         result = deepcopy(result.head(top_k).reset_index(drop=True))
         return result
 
-def code_search(key_words, top_K = 20):
+def code_search(codebase_path, key_words, top_K = 20):
     retriever = NlRetriever()
     data = []
-    for file in os.listdir('./CodeBaseBuild/data'):
-        item = pd.read_csv('./CodeBaseBuild/data/' + file)
+    for file in os.listdir(codebase_path):
+        item = pd.read_csv(os.path.join(codebase_path, file))
         item['repo_name'] = file.split('.')[00]
         if len(data) == 0:
             data = item

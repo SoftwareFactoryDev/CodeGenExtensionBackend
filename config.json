@@ -1,0 +1,7 @@
+{
+    "codeBaseBuild":{
+        "repoPath":"D:/Work/lab/20251117-20251118-一飞院/CodeGeneration/repo",
+        "codebasePath":"D:/Work/lab/20251117-20251118-一飞院/CodeGeneration/data",
+        "clang_Path":"D:/Environment/Development/Clang/install/LLVM/bin/libclang.dll"
+    }
+}

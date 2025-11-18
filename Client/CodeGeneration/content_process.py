@@ -1,5 +1,5 @@
-def req_list_content(req_list):
+def history_content(history):
     content = ''
-    for req in req_list:
-        content += f"* {req['ID']} : {req['Content']}\n"
+    for record in history:
+        content += f"* {record['role']} : {record['message']}\n"
     return content

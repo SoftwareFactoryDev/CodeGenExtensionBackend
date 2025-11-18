@@ -1,10 +1,8 @@
 import json
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional
 import uvicorn
-import subprocess
-from datetime import datetime
 from client.CodeBaseBuild.build_codebase import get_repository,build_code_base
 
 from client.CodeSearch.code_search import code_search

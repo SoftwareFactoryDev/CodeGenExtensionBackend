@@ -1,5 +1,5 @@
 from openai import OpenAI
-def generate_api(messages, host='http://10.13.1.102:8021/v1', model = 'deepseek-ai/DeepSeek-R1', key='103', top_p=0.9, temperature=0.6, stream=False):
+def generate_api(messages, host='https://api.hunyuan.cloud.tencent.com/v1', model = 'hunyuan-lite', key='sk-nllgmS5SLhhaNBzCDl7nXOMMOA8E8wn2YQ4nNIWQGM8decLa', top_p=0.9, temperature=0.6, stream=False):
     
     client = OpenAI(base_url=host,api_key=key)
     result = client.chat.completions.create(

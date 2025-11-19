@@ -69,7 +69,10 @@ def generate(request: GenerateRequest):
 
     # code generation
     messages = prompt_templete.generate_message()
-    code = generate_api(messages)
+    host = config['llm']['url']
+    model = config['llm']['model']
+    key = config['llm']['key']
+    code = generate_api(messages, host=host, model=model, key=key)
     return {"code":code}
 
 # ==================== 主程序 ====================

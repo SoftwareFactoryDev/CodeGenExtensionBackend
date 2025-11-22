@@ -1,6 +1,6 @@
 import os
 import clang.cindex as cl
-from CodeBaseBuild.llm_gen import generate_api
+from client.CodeBaseBuild.llm_gen import generate_api
 
 class CParser:
 

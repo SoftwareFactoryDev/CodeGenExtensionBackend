@@ -1,13 +1,13 @@
 import json
 from fastapi import FastAPI
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Dict, Any
 import uvicorn
 from client.CodeBaseBuild.build_codebase import get_repository,build_code_base
 
 from client.CodeSearch.code_search import code_search
 from client.CodeGeneration.generation import generate_api
-from client.CodeGeneration.prompt import code_gen_instruct, code_gen_retlist, code_gen_pseudocode
+from client.CodeGeneration.prompt import code_gen_instruct
 from client.CodeGeneration.content_process import history_content
 
 app = FastAPI(title="Code Generation Server", version="1.0.0")
@@ -43,7 +43,8 @@ def build(request: BuildRequest):
 
 class GenerateRequest(BaseModel):
     prompt: str
-    history: Optional[str] = None
+    history: Optional[List[Dict[str, Any]]] = None
+    # history 参考格式:{role:"assistant/user", message:"xxxx"}
 
 class GenerateResponse(BaseModel):
     code: str
@@ -80,6 +81,5 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+        port=8000
+)

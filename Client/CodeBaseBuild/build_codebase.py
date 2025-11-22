@@ -7,9 +7,9 @@ from git import Repo
 from copy import deepcopy
 import jieba
 
-from CodeBaseBuild.CParser import CParser
-from CodeBaseBuild.prompt import function_sum_template
-from CodeBaseBuild.llm_gen import generate_api
+from client.CodeBaseBuild.CParser import CParser
+from client.CodeBaseBuild.prompt import function_sum_template
+from client.CodeBaseBuild.llm_gen import generate_api
 
 import pandas as pd
 

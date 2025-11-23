@@ -1,0 +1,1722 @@
+,Unnamed: 0.1,Unnamed: 0,name,return_type,signature,params,summary,source_code,extent,file_path,sum_tokenize
+0,0,0,led_on,void,void led_on(),[],打开LED亮度文件并写入亮度值1,"void led_on(void) {
+    FILE *fp = fopen(LED_BRIGHTNESS_PATH, ""w"");
+    if (fp) {
+        fprintf(fp, ""1"");
+        fclose(fp);
+    }
+}","{'begin': {'line': 106, 'column': 1}, 'end': {'line': 112, 'column': 2}}",boot.c,"['打开', 'LED', '亮度', '文件', '并', '写入', '亮度', '值', '1']"
+1,1,1,led_off,void,void led_off(),[],"该函数用于将LED亮度设置为最低，即关闭LED。它通过打开一个文件并写入""0""来实现这一功能，然后关闭文件。","void led_off(void) {
+    FILE *fp = fopen(LED_BRIGHTNESS_PATH, ""w"");
+    if (fp) {
+        fprintf(fp, ""0"");
+        fclose(fp);
+    }
+}","{'begin': {'line': 114, 'column': 1}, 'end': {'line': 120, 'column': 2}}",boot.c,"['该', '函数', '用于', '将', 'LED', '亮度', '设置', '为', '最低', '，', '即', '关闭', 'LED', '。', '它', '通过', '打开', '一个', '文件', '并', '写入', '""', '0', '""', '来', '实现', '这一', '功能', '，', '然后', '关闭', '文件', '。']"
+2,2,2,led_blink,void,void led_blink(),[],设置LED为none触发模式，然后闪烁一次,"void led_blink(void) {
+    // 先设置为 none 触发模式
+    FILE *fp = fopen(LED_TRIGGER_PATH, ""w"");
+    if (fp) {
+        fprintf(fp, ""none"");
+        fclose(fp);
+    }
+    
+    // 闪烁一次
+    led_off();
+    usleep(100000);  // 100ms
+    led_on();
+}","{'begin': {'line': 123, 'column': 1}, 'end': {'line': 135, 'column': 2}}",boot.c,"['设置', 'LED', '为', 'none', '触发', '模式', '，', '然后', '闪烁', '一次']"
+3,3,3,load_script_config,void,void load_script_config(),[],加载配置文件并解析页面、按键、音量加减等脚本配置,"void load_script_config(void) {
+    if (script_config.is_loaded) return;
+
+    json_object *root = json_object_from_file(CONFIG_FILE);
+    if (!root) {
+        printf(""无法加载配置文件: %s\n"", CONFIG_FILE);
+        return;
+    }
+
+    // 加载页面配置
+    json_object *pages_obj;
+    if (json_object_object_get_ex(root, ""pages"", &pages_obj)) {
+        for (int i = 0; i < MAX_PAGES; i++) {
+            json_object *page_obj = json_object_array_get_idx(pages_obj, i);
+            if (page_obj) {
+                json_object *name_obj, *start_cmd_obj, *stop_cmd_obj;
+                
+                if (json_object_object_get_ex(page_obj, ""name"", &name_obj))
+                    page_config[i].name = strdup(json_object_get_string(name_obj));
+                
+                if (json_object_object_get_ex(page_obj, ""start_cmd"", &start_cmd_obj))
+                    page_config[i].start_cmd = strdup(json_object_get_string(start_cmd_obj));
+                
+                if (json_object_object_get_ex(page_obj, ""stop_cmd"", &stop_cmd_obj))
+                    page_config[i].stop_cmd = strdup(json_object_get_string(stop_cmd_obj));
+            }
+        }
+    }
+
+    // 加载按键脚本配置
+    json_object *power_obj;
+    if (json_object_object_get_ex(root, ""power"", &power_obj)) {
+        script_config.power_scripts[0] = strdup(json_object_get_string(json_object_array_get_idx(power_obj, 0)));
+        script_config.power_scripts[1] = strdup(json_object_get_string(json_object_array_get_idx(power_obj, 1)));
+    }
+
+    // 加载音量加键配置
+    json_object *volup_obj;
+    if (json_object_object_get_ex(root, ""volup"", &volup_obj)) {
+        script_config.volup_scripts[0] = strdup(json_object_get_string(json_object_array_get_idx(volup_obj, 0)));
+        script_config.volup_scripts[1] = strdup(json_object_get_string(json_object_array_get_idx(volup_obj, 1)));
+    }
+
+    // 加载音量减键配置
+    json_object *voldown_obj;
+    if (json_object_object_get_ex(root, ""voldown"", &voldown_obj)) {
+        script_config.voldown_scripts[0] = strdup(json_object_get_string(json_object_array_get_idx(voldown_obj, 0)));
+        script_config.voldown_scripts[1] = strdup(json_object_get_string(json_object_array_get_idx(voldown_obj, 1)));
+    }
+
+    json_object_put(root);
+    script_config.is_loaded = 1;
+}","{'begin': {'line': 138, 'column': 1}, 'end': {'line': 190, 'column': 2}}",boot.c,"['加载', '配置', '文件', '配置文件', '并', '解析', '页面', '、', '按键', '、', '音量', '加减', '等', '脚本', '配置']"
+4,4,4,cleanup_script_config,void,void cleanup_script_config(),[],释放页面和按键脚本配置的内存,"void cleanup_script_config(void) {
+    // 清理页面配置
+    for (int i = 0; i < MAX_PAGES; i++) {
+        free(page_config[i].name);
+        free(page_config[i].start_cmd);
+        free(page_config[i].stop_cmd);
+    }
+    
+    // 清理按键脚本配置
+    for (int i = 0; i < 2; i++) {
+        free(script_config.power_scripts[i]);
+        free(script_config.volup_scripts[i]);
+        free(script_config.voldown_scripts[i]);
+    }
+}","{'begin': {'line': 193, 'column': 1}, 'end': {'line': 207, 'column': 2}}",boot.c,"['释放', '页面', '和', '按键', '脚本', '配置', '的', '内存']"
+5,5,5,execute_command,void,void execute_command(const char * command),"[{'name': 'command', 'type': 'const char *'}]",执行命令，重定向输出，等待完成并闪烁LED,"void execute_command(const char *command) {
+    if (!command) return;
+    
+    // 闪烁LED指示命令开始执行
+    led_blink();
+    
+    pid_t pid = fork();
+    if (pid == 0) {
+        // 重定向输出到/dev/null
+        int devnull = open(""/dev/null"", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        
+        execl(""/bin/sh"", ""sh"", ""-c"", command, NULL);
+        exit(1);
+    }
+    
+    // 等待命令执行完成
+    waitpid(pid, NULL, 0);
+    
+    // 再次闪烁LED指示命令执行完成
+    led_blink();
+}","{'begin': {'line': 210, 'column': 1}, 'end': {'line': 235, 'column': 2}}",boot.c,"['执行', '命令', '执行命令', '，', '定向', '重定向', '输出', '，', '等待', '完成', '并', '闪烁', 'LED']"
+6,6,6,display_text,void,void display_text(const char * text),"[{'name': 'text', 'type': 'const char *'}]",调用fork()和execl()函数在子进程中显示文本,"void display_text(const char *text) {
+    if (!animation_enabled) return;  // 如果显示被禁用，直接返回
+    pid_t pid = fork();
+    if (pid == 0) {
+        execl(""./show_text"", ""./show_text"", text, ""24"", ""0xFFFF"", ""1"", ""1"", NULL);
+        exit(1);
+    }
+    waitpid(pid, NULL, 0);
+}","{'begin': {'line': 238, 'column': 1}, 'end': {'line': 246, 'column': 2}}",boot.c,"['调用', 'fork', '(', ')', '和', 'execl', '(', ')', '函数', '在子', '进程', '中', '显示', '文本']"
+7,7,7,process_key_action,void,"void process_key_action(int key_code, int action_type)","[{'name': 'key_code', 'type': 'int'}, {'name': 'action_type', 'type': 'int'}]",根据按键代码和动作类型处理相应的操作，如切换页面、执行动画、更新音量等，并支持长按和组合按键操作。,"void process_key_action(int key_code, int action_type) {
+    if (!script_config.is_loaded) {
+        load_script_config();
+    }
+    // 触发具体事件后，重置按键状态
+    key_state.is_pressed = 0;
+    key_state.click_count = 0;
+    
+    // action_type: 1=单击, 2=双击, 3=长按
+    // printf(""处理按键: %d, 动作类型: %d\n"", key_code, action_type);
+    
+    switch (key_code) {
+        case KEY_POWER:
+            if (action_type == 1) {
+                // 单击：切换到下一个页面
+                switch_to_next_page();
+            } 
+            else if (action_type == 2) {
+                // 停止当前动画
+                stop_animation();
+                // 双击：切换空闲动画状态
+                animation_enabled = !animation_enabled;
+                printf(""显示状态: %s\n"", animation_enabled ? ""启用"" : ""禁用"");
+                
+                pid_t status_pid = fork();
+                if (status_pid == 0) {
+                    char text[128];
+                    snprintf(text, sizeof(text), ""Animation: \n%s"", 
+                            animation_enabled ? ""Enabled"" : ""Disabled"");
+                    execl(""./show_text"", ""./show_text"", text, ""24"", ""0xFFFF"", ""1"", ""1"", NULL);
+                    exit(1);
+                }
+                waitpid(status_pid, NULL, 0);
+                sleep(1);
+                
+                pid_t clear_pid = fork();
+                if (clear_pid == 0) {
+                    execl(""./show_text"", ""./show_text"", """", ""24"", ""0xFFFF"", ""1"", ""1"", NULL);
+                    exit(1);
+                }
+                if(animation_enabled){
+                    display_current_page();
+                }
+            }
+            else if (action_type == 3) {
+                // 长按：根据计数器执行不同脚本
+                long_press_counters.power_count++;
+                int script_idx = (long_press_counters.power_count - 1) % 2;
+                char *command = script_config.power_scripts[script_idx];
+                // 根据脚本索引设置空闲动画状态
+                if (script_idx == 0) {
+                    stop_animation();
+                    animation_enabled = 0;
+                }else{
+                    animation_enabled = 1;
+                }
+                if (command) {
+                    printf(""电源键长按 - 执行命令: %s\n"", command);
+                    execute_command(command);
+                }
+            }
+            break;
+            
+        case KEY_VOLUMEUP:
+            if (action_type == 1) {
+                update_volume(VOLUME_STEP);
+            } else if (action_type == 2) {
+                update_volume(3*VOLUME_STEP);
+            } else if (action_type == 3) {
+                long_press_counters.vol_up_count++;
+                int script_idx = (long_press_counters.vol_up_count - 1) % 2;
+                char *command = script_config.volup_scripts[script_idx];
+                if (command) {
+                    printf(""音量加长按 - 执行命令: %s\n"", command);
+                    execute_command(command);
+                }
+            }
+            break;
+            
+        case KEY_VOLUMEDOWN:
+            if (action_type == 1) {
+                update_volume(-VOLUME_STEP);
+            } else if (action_type == 2) {
+                update_volume(-3*VOLUME_STEP);
+            } else if (action_type == 3) {
+                long_press_counters.vol_down_count++;
+                int script_idx = (long_press_counters.vol_down_count - 1) % 2;
+                char *command = script_config.voldown_scripts[script_idx];
+                if (command) {
+                    printf(""音量减长按 - 执行命令: %s\n"", command);
+                    execute_command(command);
+                }
+            }
+            break;
+    }
+}","{'begin': {'line': 249, 'column': 1}, 'end': {'line': 344, 'column': 2}}",boot.c,"['根据', '按键', '代码', '和', '动作', '类型', '处理', '相应', '的', '操作', '，', '如', '切换', '页面', '、', '执行', '动画', '、', '更新', '音量', '等', '，', '并', '支持', '长', '按', '和', '组合', '按键', '操作', '。']"
+8,8,8,get_time_diff,long,"long get_time_diff(struct timespec start, struct timespec end)","[{'name': 'start', 'type': 'struct timespec'}, {'name': 'end', 'type': 'struct timespec'}]",计算两个时间点之间的毫秒差,"long get_time_diff(struct timespec start, struct timespec end) {
+    return (end.tv_sec - start.tv_sec) * 1000 +
+           (end.tv_nsec - start.tv_nsec) / 1000000;
+}","{'begin': {'line': 347, 'column': 1}, 'end': {'line': 350, 'column': 2}}",boot.c,"['计算', '两个', '时间', '点', '之间', '的', '毫秒', '差']"
+9,9,9,handle_key_event,void,"void handle_key_event(int key_code, int value)","[{'name': 'key_code', 'type': 'int'}, {'name': 'value', 'type': 'int'}]",handle_key_event函数用于处理键盘事件，根据按键值（按下或释放）更新按键状态，并在需要时处理双击事件。,"void handle_key_event(int key_code, int value) {
+    struct timespec current_time;
+    clock_gettime(CLOCK_MONOTONIC, &current_time);
+    
+    if (value == 1) {  // 按下
+        key_state.is_pressed = 1;
+        key_state.last_press_time = current_time;
+        
+        if (key_code != key_state.key_code || 
+            get_time_diff(key_state.last_release_time, current_time) >= DOUBLE_CLICK_THRESHOLD) {
+            // 新的按键序列
+            key_state.key_code = key_code;
+            key_state.click_count = 1;
+        } else {
+            // 可能的双击
+            key_state.click_count++;
+            if (key_state.click_count == 2) {
+                process_key_action(key_code, 2);  // 立即处理双击
+                key_state.click_count = 0;
+            }
+        }
+    }
+    else if (value == 0) {  // 释放
+        key_state.is_pressed = 0;
+        key_state.last_release_time = current_time;
+    }
+}","{'begin': {'line': 353, 'column': 1}, 'end': {'line': 379, 'column': 2}}",boot.c,"['handle', '_', 'key', '_', 'event', '函数', '用于', '处理', '键盘', '事件', '，', '根据', '按键', '值', '（', '按下', '或', '释放', '）', '更新', '按键', '状态', '，', '并', '在', '需要', '时', '处理', '双击', '事件', '。']"
+10,10,10,check_pending_clicks,void,void check_pending_clicks(),[],检查按键是否处于长按或单击状态，并进行相应处理。,"void check_pending_clicks(void) {
+    if (key_state.is_pressed) {
+        struct timespec current_time;
+        clock_gettime(CLOCK_MONOTONIC, &current_time);
+        
+        // 检查长按
+        long press_duration = get_time_diff(key_state.last_press_time, current_time);
+        if (press_duration >= LONG_PRESS_THRESHOLD) {
+            process_key_action(key_state.key_code, 3);  // 处理长按
+            key_state.click_count = 0;     // 清除点击计数
+            return;  // 长按触发后直接返回
+        }
+    }
+    
+    // 检查单击（未处于按下状态且有一次点击）
+    if (!key_state.is_pressed && key_state.click_count == 1) {
+        struct timespec current_time;
+        clock_gettime(CLOCK_MONOTONIC, &current_time);
+        
+        long release_diff = get_time_diff(key_state.last_release_time, current_time);
+        if (release_diff >= DOUBLE_CLICK_THRESHOLD) {
+            process_key_action(key_state.key_code, 1);  // 处理单击
+            key_state.click_count = 0;
+        }
+    }
+}","{'begin': {'line': 382, 'column': 1}, 'end': {'line': 407, 'column': 2}}",boot.c,"['检查', '按键', '是否', '处于', '长', '按', '或', '单击', '状态', '，', '并', '进行', '相应', '处理', '。']"
+11,11,11,play_animation,void,"void play_animation(const char * animation_name, int loop_once, int delay)","[{'name': 'animation_name', 'type': 'const char *'}, {'name': 'loop_once', 'type': 'int'}, {'name': 'delay', 'type': 'int'}]",根据传入的动画名称、是否循环播放及延迟时间，启动或重启动画进程。,"void play_animation(const char *animation_name, int loop_once, int delay) {
+    if (!animation_name) {
+        printf(""错误：动画名称为空\n"");
+        return;
+    }
+
+    // 停止当前动画
+    if (animation_pid > 0) {
+        kill(animation_pid, SIGTERM);
+        waitpid(animation_pid, NULL, 0);
+    }
+    
+    // 创建新进程
+    pid_t pid = fork();
+    if (pid < 0) {
+        printf(""错误：无法创建动画进程\n"");
+        return;
+    }
+    
+    if (pid == 0) {
+        // 子进程
+        // 重定向输出到/dev/null
+        int devnull = open(""/dev/null"", O_WRONLY);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        
+        char delay_str[16];
+        snprintf(delay_str, sizeof(delay_str), ""%d"", delay);
+        
+        if (loop_once) {
+            execlp(""./play_bmp_sequence"", ""./play_bmp_sequence"", ""-d"", delay_str, ""-l"", animation_name, NULL);
+        } else {
+            execlp(""./play_bmp_sequence"", ""./play_bmp_sequence"", ""-d"", delay_str, animation_name, NULL);
+        }
+        exit(1);
+    } else {
+        // 父进程
+        animation_pid = pid;
+        printf(""启动动画进程，PID: %d\n"", pid);
+        // 如果是只播放一次的动画，等待它结束并重置 PID
+        if (loop_once) {
+            waitpid(pid, NULL, 0);
+            animation_pid = -1;
+            printf(""动画播放结束，PID: %d\n"", pid);
+        }
+    }
+}","{'begin': {'line': 410, 'column': 1}, 'end': {'line': 459, 'column': 2}}",boot.c,"['根据', '传入', '的', '动画', '名称', '、', '是否', '循环', '播放', '及', '延迟', '时间', '延迟时间', '，', '启动', '或', '重启', '启动', '重启动', '画', '进程', '。']"
+12,12,12,show_battery_info,void,void show_battery_info(),[],显示电池信息和充电状态,"void show_battery_info() {
+    // 停止动画
+    stop_animation();
+
+    char status[32];
+    char capacity[32];
+    FILE *fp;
+    
+    printf(""开始读取电池信息...\n"");
+    
+    // 读取充电状态
+    fp = fopen(""/sys/class/power_supply/axp20x-battery/status"", ""r"");
+    if (fp) {
+        fgets(status, sizeof(status), fp);
+        // 移除换行符
+        status[strcspn(status, ""\n"")] = 0;
+        fclose(fp);
+        printf(""读取到充电状态: %s\n"", status);
+    } else {
+        printf(""无法打开充电状态文件\n"");
+        return;
+    }
+    
+    // 读取电量
+    fp = fopen(""/sys/class/power_supply/axp20x-battery/capacity"", ""r"");
+    if (fp) {
+        fgets(capacity, sizeof(capacity), fp);
+        // 移除换行符
+        capacity[strcspn(capacity, ""\n"")] = 0;
+        fclose(fp);
+        printf(""读取到电池电量: %s\n"", capacity);
+    } else {
+        printf(""无法打开电池电量文件\n"");
+        return;
+    }
+    
+    char text[128];
+    snprintf(text, sizeof(text), ""Battery: %s%%\n(%s)"", capacity, status);
+    display_text(text);
+}","{'begin': {'line': 462, 'column': 1}, 'end': {'line': 501, 'column': 2}}",boot.c,"['显示', '电池', '信息', '和', '充电', '状态']"
+13,13,13,update_volume,void,void update_volume(int change),"[{'name': 'change', 'type': 'int'}]",根据输入的变化量更新音量，进行边界检查并使用amixer命令调整音量。,"void update_volume(int change) {
+    // 停止动画
+    stop_animation();
+
+    char cmd[128];
+    
+    // 先获取当前实际音量
+    current_volume = get_current_volume();
+    
+    int new_volume = current_volume + change;
+    
+    // 边界检查
+    if (new_volume < VOLUME_MIN) new_volume = VOLUME_MIN;
+    if (new_volume > VOLUME_MAX) new_volume = VOLUME_MAX;
+    
+    if (new_volume != current_volume) {
+        // 重定向标准输出和错误输出到/dev/null
+        snprintf(cmd, sizeof(cmd), ""amixer set 'Power Amplifier' %d > /dev/null 2>&1"", new_volume);
+        system(cmd);
+        current_volume = new_volume;
+    }
+    printf(""当前音量: %d\n"", new_volume);
+}","{'begin': {'line': 504, 'column': 1}, 'end': {'line': 526, 'column': 2}}",boot.c,"['根据', '输入', '的', '变化', '量', '更新', '音量', '，', '进行', '边界', '检查', '并', '使用', 'amixer', '命令', '调整', '音量', '。']"
+14,14,14,check_battery_status,void,void check_battery_status(),[],检查电池状态，根据状态更新动画。,"void check_battery_status() {
+    FILE *fp = fopen(""/sys/class/power_supply/axp20x-battery/status"", ""r"");
+    if (fp) {
+        char status[32];
+        fgets(status, sizeof(status), fp);
+        fclose(fp);
+        
+        int new_status = strstr(status, ""Charging"") != NULL;
+        if (new_status != charging_status) {
+            charging_status = new_status;
+            if (charging_status&&animation_enabled) {
+                play_animation(""charging"", 0, 100);  // 充电动画无限循环
+            } else {
+                stop_animation();  // 停止充电动画
+            }
+        } else if (charging_status && animation_pid <= 0) {
+            // 如果正在充电但没有动画在运行，重新启动动画
+            play_animation(""charging"", 0, 100);
+        }
+    }
+}","{'begin': {'line': 529, 'column': 1}, 'end': {'line': 549, 'column': 2}}",boot.c,"['检查', '电池', '状态', '，', '根据', '状态', '更新', '动画', '。']"
+15,15,15,stop_animation,void,void stop_animation(),[],"{
+""name"": ""stop_animation"",
+""summary"": ""停止动画，通过发送SIGTERM信号和等待进程结束来实现""
+}","void stop_animation(void) {
+    if (animation_pid > 0) {
+        kill(animation_pid, SIGTERM);
+        waitpid(animation_pid, NULL, 0);
+        animation_pid = -1;
+    }
+}","{'begin': {'line': 552, 'column': 1}, 'end': {'line': 558, 'column': 2}}",boot.c,"['{', '\n', '""', 'name', '""', ':', ' ', '""', 'stop', '_', 'animation', '""', ',', '\n', '""', 'summary', '""', ':', ' ', '""', '停止', '动画', '，', '通过', '发送', 'SIGTERM', '信号', '和', '等待', '进程', '结束', '来', '实现', '""', '\n', '}']"
+16,16,16,cleanup,void,void cleanup(int signum),"[{'name': 'signum', 'type': 'int'}]",根据信号号终止动画进程，并执行清理脚本后退出,"void cleanup(int signum) {
+    if (animation_pid > 0) {
+        kill(animation_pid, SIGTERM);
+        waitpid(animation_pid, NULL, 0);
+    }
+    cleanup_script_config();
+    exit(0);
+}","{'begin': {'line': 561, 'column': 1}, 'end': {'line': 568, 'column': 2}}",boot.c,"['根据', '信号', '号', '终止', '动画', '进程', '，', '并', '执行', '清理', '脚本', '后', '退出']"
+17,17,17,get_current_volume,int,int get_current_volume(),[],使用amixer命令获取并返回当前音量，确保音量在有效范围内,"int get_current_volume(void) {
+    FILE *fp;
+    char cmd[128];
+    char result[32];
+    int volume = 0;
+    
+    // 使用amixer命令获取当前音量
+    snprintf(cmd, sizeof(cmd), ""amixer get 'Power Amplifier' | grep 'Mono:' | awk '{print $2}'"");
+    fp = popen(cmd, ""r"");
+    if (fp) {
+        if (fgets(result, sizeof(result), fp)) {
+            volume = atoi(result);
+        }
+        pclose(fp);
+    }
+    
+    // 确保音量在有效范围内
+    if (volume < VOLUME_MIN) volume = VOLUME_MIN;
+    if (volume > VOLUME_MAX) volume = VOLUME_MAX;
+
+    return volume;
+}","{'begin': {'line': 571, 'column': 1}, 'end': {'line': 592, 'column': 2}}",boot.c,"['使用', 'amixer', '命令', '获取', '并', '返回', '当前', '音量', '，', '确保', '音量', '在', '有效', '范围', '内']"
+18,18,18,play_random_animation,void,void play_random_animation(const char * path),"[{'name': 'path', 'type': 'const char *'}]",根据给定路径随机选择并播放文件夹中的动画。,"void play_random_animation(const char *path) {
+    DIR *dir;
+    struct dirent *entry;
+    char **folders = NULL;
+    int folder_count = 0;
+    int max_folders = 100;  // 预分配空间
+
+    // 分配初始空间
+    folders = malloc(max_folders * sizeof(char *));
+    if (!folders) {
+        printf(""Failed to allocate memory for folders\n"");
+        return;
+    }
+
+    // 打开指定目录
+    dir = opendir(path);
+    if (!dir) {
+        printf(""Failed to open directory: %s\n"", path);
+        free(folders);
+        return;
+    }
+
+    // 读取所有子文件夹
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_DIR && 
+            strcmp(entry->d_name, ""."") != 0 && 
+            strcmp(entry->d_name, "".."") != 0) {
+            
+            // 如果空间不足，重新分配
+            if (folder_count >= max_folders) {
+                max_folders *= 2;
+                char **new_folders = realloc(folders, max_folders * sizeof(char *));
+                if (!new_folders) {
+                    printf(""Failed to reallocate memory\n"");
+                    closedir(dir);
+                    for (int i = 0; i < folder_count; i++) {
+                        free(folders[i]);
+                    }
+                    free(folders);
+                    return;
+                }
+                folders = new_folders;
+            }
+
+            // 复制文件夹名
+            folders[folder_count] = strdup(entry->d_name);
+            if (!folders[folder_count]) {
+                printf(""Failed to allocate memory for folder name\n"");
+                closedir(dir);
+                for (int i = 0; i < folder_count; i++) {
+                    free(folders[i]);
+                }
+                free(folders);
+                return;
+            }
+            folder_count++;
+        }
+    }
+    closedir(dir);
+
+    // 如果有找到文件夹，随机选择一个播放
+    if (folder_count > 0) {
+        srand(time(NULL));
+        int random_index = rand() % folder_count;
+        printf(""Playing random animation: %s\n"", folders[random_index]);
+        
+        // 构建完整的动画路径
+        char full_path[256];
+        snprintf(full_path, sizeof(full_path), ""%s/%s"", path, folders[random_index]);
+        play_animation(full_path, 0, 100);
+    } else {
+        printf(""No animation folders found in %s\n"", path);
+    }
+
+    // 清理内存
+    for (int i = 0; i < folder_count; i++) {
+        free(folders[i]);
+    }
+    free(folders);
+}","{'begin': {'line': 595, 'column': 1}, 'end': {'line': 674, 'column': 2}}",boot.c,"['根据', '给定', '路径', '随机', '选择', '并', '播放', '文件', '件夹', '文件夹', '中', '的', '动画', '。']"
+19,19,19,display_current_page,void,void display_current_page(),[],根据当前页码切换显示页面内容，表情页面播放随机动画，其他页面显示名称并执行启动命令,"void display_current_page(void) {
+    switch (page_state.current_page) {
+        case 0:  // 表情页面
+            if (animation_enabled) {
+                play_random_animation(""./emotions"");
+            }
+            break;
+        default:  // 其他页面
+            printf(""显示页面: %s\n"", page_config[page_state.current_page].name);
+            display_text(page_config[page_state.current_page].name);
+            usleep(100000);
+            if (page_config[page_state.current_page].start_cmd && 
+                page_config[page_state.current_page].start_cmd[0] != '\0') {
+                execute_command(page_config[page_state.current_page].start_cmd);
+            }
+            break;
+    }
+}","{'begin': {'line': 677, 'column': 1}, 'end': {'line': 694, 'column': 2}}",boot.c,"['根据', '当前', '页码', '切换', '显示', '页面', '内容', '，', '表情', '页面', '播放', '随机', '动画', '，', '其他', '页面', '显示', '名称', '并', '执行', '启动', '命令']"
+20,20,20,switch_to_next_page,void,void switch_to_next_page(),[],函数用于切换到下一页，执行停止命令并更新页面状态。,"void switch_to_next_page(void) {
+    // 如果当前页面有停止命令，执行它
+    if (page_state.current_page > 0 && 
+        page_config[page_state.current_page].stop_cmd && 
+        page_config[page_state.current_page].stop_cmd[0] != '\0') {
+        execute_command(page_config[page_state.current_page].stop_cmd);
+    }
+    
+    // 如果当前是表情页面，先停止动画
+    if (page_state.current_page == 0) {
+        stop_animation();
+    }
+    
+    page_state.current_page = (page_state.current_page + 1) % MAX_PAGES;
+    display_current_page();
+}","{'begin': {'line': 697, 'column': 1}, 'end': {'line': 712, 'column': 2}}",boot.c,"['函数', '用于', '切换', '到', '下', '一页', '，', '执行', '停止', '命令', '并', '更新', '页面', '状态', '。']"
+21,21,21,main,int,"int main(int argc, char *[] argv)","[{'name': 'argc', 'type': 'int'}, {'name': 'argv', 'type': 'char *[]'}]",主函数，用于初始化系统并监控输入设备事件，如按键和音量键。,"int main(int argc, char *argv[]) {
+    int fd0, fd1;
+    struct input_event ev;
+    struct pollfd fds[2];
+    char *device0 = ""/dev/input/event0"";
+    char *device1 = ""/dev/input/event1"";
+    
+    // 设置信号处理
+    signal(SIGINT, cleanup);
+    signal(SIGTERM, cleanup);
+    
+    // 初始化随机数生成器
+    srand(time(NULL));
+    
+    // 获取当前音量
+    current_volume = get_current_volume();
+    printf(""当前音量: %d\n"", current_volume);
+    
+    // 打开输入设备0
+    fd0 = open(device0, O_RDONLY);
+    if (fd0 == -1) {
+        printf(""无法打开输入设备 %s\n"", device0);
+        return -1;
+    }
+    printf(""成功打开设备 %s\n"", device0);
+    
+    // 打开输入设备1
+    fd1 = open(device1, O_RDONLY);
+    if (fd1 == -1) {
+        printf(""无法打开输入设备 %s\n"", device1);
+        close(fd0);
+        return -1;
+    }
+    printf(""成功打开设备 %s\n"", device1);
+    
+    // 设置poll结构
+    fds[0].fd = fd0;
+    fds[0].events = POLLIN;
+    fds[1].fd = fd1;
+    fds[1].events = POLLIN;
+    
+    // 播放开机动画
+    play_animation(""booting"", 1, 20);  // 开机动画只播放一次
+    // 等待开机动画结束
+    while (animation_pid > 0) {
+        usleep(100000);  // 等待 100ms
+    }
+    
+    printf(""开始监控按键事件...\n"");
+    // 显示初始页面
+    display_current_page();
+    
+    // 循环读取输入事件
+    while (1) {
+        // 检查待处理的点击事件
+        check_pending_clicks();
+        
+        // 只在表情界面（页面0）检查电池状态
+        if (page_state.current_page == 0) {
+            check_battery_status();
+        }
+        
+        // 等待事件
+        int ret = poll(fds, 2, 100);  // 100毫秒超时
+        if (ret > 0) {
+            // 检查event0 ： 电源键事件在event0
+            if (fds[0].revents & POLLIN) {
+                if (read(fd0, &ev, sizeof(struct input_event)) == sizeof(struct input_event)) {
+                    if (ev.type == EV_KEY) {
+                        if (ev.code == KEY_POWER) {
+                            // printf(""检测到电源键事件，value = %d\n"", ev.value);
+                            handle_key_event(KEY_POWER, ev.value);
+                        }
+                    }
+                }
+            }
+            
+            // 检查event1 音量键在event1
+            if (fds[1].revents & POLLIN) {
+                if (read(fd1, &ev, sizeof(struct input_event)) == sizeof(struct input_event)) {
+                    if (ev.type == EV_KEY) {
+                        handle_key_event(ev.code, ev.value);
+                    }
+                }
+            }
+        }
+    }
+    
+    // 清理资源
+    cleanup(0);
+    return 0;
+}","{'begin': {'line': 714, 'column': 1}, 'end': {'line': 805, 'column': 2}}",boot.c,"['主', '函数', '，', '用于', '初始', '初始化', '系统', '并', '监控', '输入', '设备', '事件', '，', '如', '按键', '和', '音量', '键', '。']"
+22,22,22,play_animation,void,void play_animation(const char * animation_name),"[{'name': 'animation_name', 'type': 'const char *'}]",根据传入的动画名称播放动画，若进程已存在则终止并等待其结束，然后使用execlp启动新进程播放动画。,"void play_animation(const char *animation_name) {
+    if (animation_pid > 0) {
+        kill(animation_pid, SIGTERM);
+        waitpid(animation_pid, NULL, 0);
+    }
+    
+    pid_t pid = fork();
+    if (pid == 0) {
+        execlp(""play_bmp_sequence"", ""play_bmp_sequence"", ""-d"", ""100"", animation_name, NULL);
+        exit(1);
+    } else if (pid > 0) {
+        animation_pid = pid;
+    }
+}","{'begin': {'line': 31, 'column': 1}, 'end': {'line': 44, 'column': 2}}",key_monitor.c,"['根据', '传入', '的', '动画', '名称', '播放', '动画', '，', '若', '进程', '已', '存在', '则', '终止', '并', '等待', '其', '结束', '，', '然后', '使用', 'execlp', '启动', '新', '进程', '播放', '动画', '。']"
+23,23,23,show_battery_info,void,void show_battery_info(),[],读取电池状态和电量信息，并调用show_text显示。,"void show_battery_info() {
+    char status[32];
+    char capacity[32];
+    FILE *fp;
+    
+    // 读取充电状态
+    fp = fopen(""/sys/class/power_supply/axp20x-battery/status"", ""r"");
+    if (fp) {
+        fgets(status, sizeof(status), fp);
+        fclose(fp);
+    }
+    
+    // 读取电量
+    fp = fopen(""/sys/class/power_supply/axp20x-battery/capacity"", ""r"");
+    if (fp) {
+        fgets(capacity, sizeof(capacity), fp);
+        fclose(fp);
+    }
+    
+    // 调用show_text显示
+    pid_t pid = fork();
+    if (pid == 0) {
+        char text[128];
+        snprintf(text, sizeof(text), ""Battery: %s%% (%s)"", capacity, status);
+        execlp(""show_text"", ""show_text"", text, ""24"", ""0xFFFF"", ""1"", ""1"", NULL);
+        exit(0);
+    }
+}","{'begin': {'line': 47, 'column': 1}, 'end': {'line': 74, 'column': 2}}",key_monitor.c,"['读取', '电池', '状态', '和', '电量', '信息', '，', '并', '调用', 'show', '_', 'text', '显示', '。']"
+24,24,24,update_volume,void,void update_volume(int change),"[{'name': 'change', 'type': 'int'}]",根据输入的变化量更新音量，确保音量在设定范围内，并使用amixer命令进行调整。,"void update_volume(int change) {
+    char cmd[128];
+    int new_volume = current_volume + change;
+    
+    // 边界检查
+    if (new_volume < VOLUME_MIN) new_volume = VOLUME_MIN;
+    if (new_volume > VOLUME_MAX) new_volume = VOLUME_MAX;
+    
+    if (new_volume != current_volume) {
+        snprintf(cmd, sizeof(cmd), ""amixer set 'Power Amplifier' %d"", new_volume);
+        system(cmd);
+        current_volume = new_volume;
+    }
+}","{'begin': {'line': 77, 'column': 1}, 'end': {'line': 90, 'column': 2}}",key_monitor.c,"['根据', '输入', '的', '变化', '量', '更新', '音量', '，', '确保', '音量', '在', '设定', '范围', '内', '，', '并', '使用', 'amixer', '命令', '进行', '调整', '。']"
+25,25,25,check_battery_status,void,void check_battery_status(),[],检查电池状态，根据上次检查时间和当前时间来判断是否需要读取电池状态文件，并根据状态更新充电标识和播放充电动画。,"void check_battery_status() {
+    static time_t last_check = 0;
+    time_t now = time(NULL);
+    
+    if (now - last_check >= BATTERY_CHECK_INTERVAL) {
+        FILE *fp = fopen(""/sys/class/power_supply/axp20x-battery/status"", ""r"");
+        if (fp) {
+            char status[32];
+            fgets(status, sizeof(status), fp);
+            fclose(fp);
+            
+            int new_status = strstr(status, ""charging"") != NULL;
+            if (new_status != charging_status) {
+                charging_status = new_status;
+                if (charging_status) {
+                    play_animation(""charging"");
+                }
+            }
+        }
+        last_check = now;
+    }
+}","{'begin': {'line': 93, 'column': 1}, 'end': {'line': 114, 'column': 2}}",key_monitor.c,"['检查', '电池', '状态', '，', '根据', '上次', '检查', '时间', '和', '当前', '时间', '来', '判断', '是否', '需要', '读取', '电池', '状态', '文件', '，', '并', '根据', '状态', '更新', '充电', '标识', '和', '播放', '充电', '动画', '。']"
+26,26,26,handle_random_animation,void,void handle_random_animation(),[],每隔一段时间随机播放一个情绪动画，最多间隔30秒。,"void handle_random_animation() {
+    static time_t last_animation_time = 0;
+    time_t now = time(NULL);
+    
+    if (now - last_activity_time > 10 && now - last_animation_time > 30) {
+        int random_num = rand() % 5 + 1;  // 假设有5个emotion动画
+        char animation_name[32];
+        snprintf(animation_name, sizeof(animation_name), ""emotion%d"", random_num);
+        play_animation(animation_name);
+        last_animation_time = now;
+    }
+}","{'begin': {'line': 117, 'column': 1}, 'end': {'line': 128, 'column': 2}}",key_monitor.c,"['每隔', '一段', '时间', '段时间', '一段时间', '随机', '播放', '一个', '情绪', '动画', '，', '最', '多', '间隔', '30', '秒', '。']"
+27,27,27,handle_volume_long_press,void,void handle_volume_long_press(),[],处理长按音量键的函数，根据按键代码调节音量。,"void handle_volume_long_press() {
+    if (volume_key_pressed) {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        long elapsed = (now.tv_sec - volume_press_time.tv_sec) * 1000000 + 
+                      (now.tv_nsec - volume_press_time.tv_nsec) / 1000;
+        
+        if (elapsed >= VOLUME_REPEAT_INTERVAL) {
+            // 根据按键代码调节音量
+            if (volume_key_code == KEY_VOLUMEUP) {
+                update_volume(VOLUME_STEP);
+            } else if (volume_key_code == KEY_VOLUMEDOWN) {
+                update_volume(-VOLUME_STEP);
+            }
+            volume_press_time = now;  // 更新时间，准备下一次调节
+        }
+    }
+}","{'begin': {'line': 131, 'column': 1}, 'end': {'line': 148, 'column': 2}}",key_monitor.c,"['处理', '长', '按', '音量', '键', '的', '函数', '，', '根据', '按键', '代码', '调节', '音量', '。']"
+28,28,28,print_key_event,void,"void print_key_event(const char * device, const struct input_event * ev)","[{'name': 'device', 'type': 'const char *'}, {'name': 'ev', 'type': 'const struct input_event *'}]",打印键盘事件，包括设备、类型、代码和值,"void print_key_event(const char* device, const struct input_event *ev) {
+    printf(""Device: %s, Type: %d, Code: %d, Value: %d\n"", 
+           device, ev->type, ev->code, ev->value);
+}","{'begin': {'line': 151, 'column': 1}, 'end': {'line': 154, 'column': 2}}",key_monitor.c,"['打印', '键盘', '事件', '，', '包括', '设备', '、', '类型', '、', '代码', '和', '值']"
+29,29,29,cleanup,void,void cleanup(int signum),"[{'name': 'signum', 'type': 'int'}]",根据信号量signum终止动画进程并退出程序,"void cleanup(int signum) {
+    if (animation_pid > 0) {
+        kill(animation_pid, SIGTERM);
+        waitpid(animation_pid, NULL, 0);
+    }
+    exit(0);
+}","{'begin': {'line': 157, 'column': 1}, 'end': {'line': 163, 'column': 2}}",key_monitor.c,"['根据', '信号', '信号量', 'signum', '终止', '动画', '进程', '并', '退出', '程序']"
+30,30,30,main,int,"int main(int argc, char *[] argv)","[{'name': 'argc', 'type': 'int'}, {'name': 'argv', 'type': 'char *[]'}]",main函数是程序的入口点，负责打开输入设备、设置信号处理、初始化随机数生成器、播放开机动画、监控按键事件、处理电源键和音量键事件以及执行相关的动画和系统命令。,"int main(int argc, char *argv[]) {
+    int fd0, fd1;
+    struct input_event ev;
+    struct pollfd fds[2];
+    char *device0 = ""/dev/input/event0"";
+    char *device1 = ""/dev/input/event1"";
+    struct timespec press_time;
+    
+    // 设置信号处理
+    signal(SIGINT, cleanup);
+    signal(SIGTERM, cleanup);
+    
+    // 初始化随机数生成器
+    srand(time(NULL));
+    
+    // 打开输入设备0
+    fd0 = open(device0, O_RDONLY);
+    if (fd0 == -1) {
+        printf(""无法打开输入设备 %s\n"", device0);
+        return -1;
+    }
+    printf(""成功打开设备 %s\n"", device0);
+    
+    // 打开输入设备1
+    fd1 = open(device1, O_RDONLY);
+    if (fd1 == -1) {
+        printf(""无法打开输入设备 %s\n"", device1);
+        close(fd0);
+        return -1;
+    }
+    printf(""成功打开设备 %s\n"", device1);
+    
+    // 设置poll结构
+    fds[0].fd = fd0;
+    fds[0].events = POLLIN;
+    fds[1].fd = fd1;
+    fds[1].events = POLLIN;
+    
+    // 播放开机动画
+    play_animation(""boot"");
+    
+    printf(""开始监控按键事件...\n"");
+    
+    // 循环读取输入事件
+    while (1) {
+        // 检查电池状态
+        check_battery_status();
+        
+        // 处理随机动画
+        handle_random_animation();
+        
+        // 处理音量键长按
+        handle_volume_long_press();
+        
+        // 等待事件
+        int ret = poll(fds, 2, 1000);  // 1秒超时
+        if (ret > 0) {
+            printf(""收到事件，ret = %d\n"", ret);
+            
+            // 检查event0
+            if (fds[0].revents & POLLIN) {
+                printf(""event0 有事件\n"");
+                if (read(fd0, &ev, sizeof(struct input_event)) == sizeof(struct input_event)) {
+                    print_key_event(""event0"", &ev);
+                    if (ev.type == EV_KEY) {
+                        last_activity_time = time(NULL);
+                        
+                        if (ev.code == KEY_POWER) {
+                            printf(""检测到电源键事件，value = %d\n"", ev.value);
+                            if (ev.value == 1) {  // 按下
+                                power_key_pressed = 1;
+                                clock_gettime(CLOCK_MONOTONIC, &press_time);
+                                // 立即显示电池信息
+                                show_battery_info();
+                            } else if (ev.value == 0) {  // 释放
+                                power_key_pressed = 0;
+                                system(""pkill show_text"");
+                            }
+                        } else if (ev.code == KEY_VOLUMEUP) {
+                            if (ev.value == 1) {  // 按下
+                                volume_key_pressed = 1;
+                                volume_key_code = KEY_VOLUMEUP;
+                                clock_gettime(CLOCK_MONOTONIC, &volume_press_time);
+                                update_volume(VOLUME_STEP);
+                            } else if (ev.value == 0) {  // 释放
+                                volume_key_pressed = 0;
+                            }
+                        } else if (ev.code == KEY_VOLUMEDOWN) {
+                            if (ev.value == 1) {  // 按下
+                                volume_key_pressed = 1;
+                                volume_key_code = KEY_VOLUMEDOWN;
+                                clock_gettime(CLOCK_MONOTONIC, &volume_press_time);
+                                update_volume(-VOLUME_STEP);
+                            } else if (ev.value == 0) {  // 释放
+                                volume_key_pressed = 0;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 检查event1
+            if (fds[1].revents & POLLIN) {
+                printf(""event1 有事件\n"");
+                if (read(fd1, &ev, sizeof(struct input_event)) == sizeof(struct input_event)) {
+                    print_key_event(""event1"", &ev);
+                    if (ev.type == EV_KEY) {
+                        last_activity_time = time(NULL);
+                        
+                        if (ev.code == KEY_POWER) {
+                            printf(""检测到电源键事件，value = %d\n"", ev.value);
+                            if (ev.value == 1) {  // 按下
+                                power_key_pressed = 1;
+                                clock_gettime(CLOCK_MONOTONIC, &press_time);
+                                // 立即显示电池信息
+                                show_battery_info();
+                            } else if (ev.value == 0) {  // 释放
+                                power_key_pressed = 0;
+                                system(""pkill show_text"");
+                            }
+                        } else if (ev.code == KEY_VOLUMEUP) {
+                            if (ev.value == 1) {  // 按下
+                                volume_key_pressed = 1;
+                                volume_key_code = KEY_VOLUMEUP;
+                                clock_gettime(CLOCK_MONOTONIC, &volume_press_time);
+                                update_volume(VOLUME_STEP);
+                            } else if (ev.value == 0) {  // 释放
+                                volume_key_pressed = 0;
+                            }
+                        } else if (ev.code == KEY_VOLUMEDOWN) {
+                            if (ev.value == 1) {  // 按下
+                                volume_key_pressed = 1;
+                                volume_key_code = KEY_VOLUMEDOWN;
+                                clock_gettime(CLOCK_MONOTONIC, &volume_press_time);
+                                update_volume(-VOLUME_STEP);
+                            } else if (ev.value == 0) {  // 释放
+                                volume_key_pressed = 0;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 处理电源键长按事件
+        if (power_key_pressed) {
+            struct timespec now;
+            clock_gettime(CLOCK_MONOTONIC, &now);
+            long elapsed = (now.tv_sec - press_time.tv_sec) * 1000000 + 
+                          (now.tv_nsec - press_time.tv_nsec) / 1000;
+            
+            if (elapsed >= LONG_PRESS_TIME) {
+                printf(""电源键长按触发\n"");
+                show_battery_info();
+            }
+        }
+    }
+    
+    // 清理资源
+    cleanup(0);
+    return 0;
+}","{'begin': {'line': 165, 'column': 1}, 'end': {'line': 326, 'column': 2}}",key_monitor.c,"['main', '函数', '是', '程序', '的', '入口', '点', '，', '负责', '打开', '输入', '设备', '、', '设置', '信号', '处理', '信号处理', '、', '初始', '初始化', '随机', '机数', '随机数', '生成', '成器', '生成器', '、', '播放', '开机', '动画', '、', '监控', '按键', '事件', '、', '处理', '电源', '键', '和', '音量', '键', '事件', '以及', '执行', '相关', '的', '动画', '和', '系统', '命令', '系统命令', '。']"
+31,31,31,print_usage,void,void print_usage(const char * program_name),"[{'name': 'program_name', 'type': 'const char *'}]",打印程序的使用说明，包括参数和选项。,"void print_usage(const char* program_name) {
+    printf(""Usage: %s [-d delay_ms] [-l] <directory>\n"", program_name);
+    printf(""Options:\n"");
+    printf(""  -d, --delay  Delay between frames in milliseconds (default: 100)\n"");
+    printf(""  -l, --loop   Play animation once (default: infinite loop)\n"");
+    printf(""Example:\n"");
+    printf(""  %s -d 200 -l bmp_sequence\n"", program_name);
+}","{'begin': {'line': 15, 'column': 1}, 'end': {'line': 22, 'column': 2}}",play_bmp_sequence.c,"['打印', '程序', '的', '使用', '说明', '，', '包括', '参数', '和', '选项', '。']"
+32,32,32,compare_filenames,int,"int compare_filenames(const void * a, const void * b)","[{'name': 'a', 'type': 'const void *'}, {'name': 'b', 'type': 'const void *'}]",比较两个文件名的字符串指针返回值,"int compare_filenames(const void* a, const void* b) {
+    return strcmp(*(const char**)a, *(const char**)b);
+}","{'begin': {'line': 24, 'column': 1}, 'end': {'line': 26, 'column': 2}}",play_bmp_sequence.c,"['比较', '两个', '文件', '文件名', '的', '字符', '字符串', '指针', '返回', '返回值']"
+33,33,33,main,int,"int main(int argc, char *[] argv)","[{'name': 'argc', 'type': 'int'}, {'name': 'argv', 'type': 'char *[]'}]",主函数，用于解析命令行参数、打开帧缓冲设备、读取屏幕信息、映射帧缓冲到内存、扫描目录中的BMP文件、对文件名进行排序、预计算背景色、进行动画循环并在循环中加载、显示图像，最后清理资源。,"int main(int argc, char *argv[]) {
+    int delay_ms = 100;  // 默认帧延迟
+    int loop_once = 0;   // 默认无限循环
+    int opt;
+    char* directory = NULL;
+    
+    // 解析命令行参数
+    static struct option long_options[] = {
+        {""delay"", required_argument, 0, 'd'},
+        {""loop"", no_argument, 0, 'l'},
+        {0, 0, 0, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, ""d:l"", long_options, NULL)) != -1) {
+        switch (opt) {
+            case 'd':
+                delay_ms = atoi(optarg);
+                if (delay_ms <= 0) {
+                    fprintf(stderr, ""Invalid delay value. Must be positive.\n"");
+                    return 1;
+                }
+                break;
+            case 'l':
+                loop_once = 1;
+                break;
+            default:
+                print_usage(argv[0]);
+                return 1;
+        }
+    }
+
+    // 获取目录参数
+    if (optind < argc) {
+        directory = argv[optind];
+    } else {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    // 打开帧缓冲设备
+    int fb = open(""/dev/fb0"", O_RDWR);
+    if (fb == -1) {
+        perror(""Error opening /dev/fb0"");
+        return 1;
+    }
+
+    // 获取屏幕信息
+    struct fb_var_screeninfo vinfo;
+    struct fb_fix_screeninfo finfo;
+    
+    if (ioctl(fb, FBIOGET_VSCREENINFO, &vinfo)) {
+        perror(""Error reading variable information"");
+        close(fb);
+        return 1;
+    }
+    
+    if (ioctl(fb, FBIOGET_FSCREENINFO, &finfo)) {
+        perror(""Error reading fixed information"");
+        close(fb);
+        return 1;
+    }
+
+    int fb_width = vinfo.xres;
+    int fb_height = vinfo.yres;
+    int bpp = vinfo.bits_per_pixel;
+    int line_length = finfo.line_length;
+
+    printf(""Screen resolution: %dx%d\n"", fb_width, fb_height);
+    printf(""Bits per pixel: %d\n"", bpp);
+    printf(""Line length: %d\n"", line_length);
+
+    // 映射帧缓冲到内存
+    size_t framebuffer_size = fb_height * line_length;
+    printf(""Framebuffer size: %zu bytes\n"", framebuffer_size);
+    
+    // 创建双缓冲
+    unsigned char* back_buffer = malloc(framebuffer_size);
+    if (!back_buffer) {
+        perror(""Error allocating back buffer"");
+        close(fb);
+        return 1;
+    }
+    
+    unsigned char* front_buffer = mmap(NULL, framebuffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
+    if (front_buffer == MAP_FAILED) {
+        perror(""Error mapping framebuffer"");
+        free(back_buffer);
+        close(fb);
+        return 1;
+    }
+
+    // 扫描目录中的BMP文件
+    DIR *dir;
+    struct dirent *ent;
+    char **bmp_files = NULL;
+    int num_files = 0;
+    int max_files = 1000;  // 假设最多1000个文件
+
+    bmp_files = malloc(max_files * sizeof(char*));
+    if (!bmp_files) {
+        perror(""Error allocating memory for file list"");
+        free(back_buffer);
+        munmap(front_buffer, framebuffer_size);
+        close(fb);
+        return 1;
+    }
+
+    dir = opendir(directory);
+    if (dir == NULL) {
+        perror(""Error opening directory"");
+        printf(""Directory: %s\n"", directory);
+        free(bmp_files);
+        free(back_buffer);
+        munmap(front_buffer, framebuffer_size);
+        close(fb);
+        return 1;
+    }
+
+    while ((ent = readdir(dir)) != NULL) {
+        if (strstr(ent->d_name, "".bmp"") != NULL) {
+            if (num_files >= max_files) {
+                fprintf(stderr, ""Too many BMP files in directory\n"");
+                break;
+            }
+            bmp_files[num_files] = malloc(strlen(directory) + strlen(ent->d_name) + 2);
+            if (!bmp_files[num_files]) {
+                perror(""Error allocating memory for filename"");
+                break;
+            }
+            sprintf(bmp_files[num_files], ""%s/%s"", directory, ent->d_name);
+            num_files++;
+        }
+    }
+    closedir(dir);
+
+    if (num_files == 0) {
+        fprintf(stderr, ""No BMP files found in directory\n"");
+        for (int i = 0; i < num_files; i++) {
+            free(bmp_files[i]);
+        }
+        free(bmp_files);
+        free(back_buffer);
+        munmap(front_buffer, framebuffer_size);
+        close(fb);
+        return 1;
+    }
+
+    // 对文件名进行排序
+    qsort(bmp_files, num_files, sizeof(char*), compare_filenames);
+
+    printf(""Found %d BMP files\n"", num_files);
+
+    // 预计算背景色（黑色）
+    unsigned short black_color = 0;
+    unsigned short* back_buffer_16 = (unsigned short*)back_buffer;
+    for (int i = 0; i < framebuffer_size / 2; i++) {
+        back_buffer_16[i] = black_color;
+    }
+
+    printf(""Animation started. Press Ctrl+C to exit...\n"");
+
+    // 动画循环
+    do {
+        for (int frame = 0; frame < num_files; frame++) {
+            int img_width, img_height, img_channels;
+            unsigned char* img_data = stbi_load(bmp_files[frame], &img_width, &img_height, &img_channels, 3);
+            
+            if (!img_data) {
+                printf(""Error loading image %s: %s\n"", bmp_files[frame], stbi_failure_reason());
+                continue;
+            }
+
+            // 计算显示位置（居中）
+            int offset_x = (fb_width - img_width) / 2;
+            int offset_y = (fb_height - img_height) / 2;
+
+            // 在后缓冲上绘制当前帧
+            for (int y = 0; y < img_height; y++) {
+                for (int x = 0; x < img_width; x++) {
+                    int src_pos = (y * img_width + x) * 3;
+                    unsigned char r = img_data[src_pos];
+                    unsigned char g = img_data[src_pos+1];
+                    unsigned char b = img_data[src_pos+2];
+
+                    int fb_x = x + offset_x;
+                    int fb_y = y + offset_y;
+                    
+                    if (fb_x >= 0 && fb_x < fb_width && fb_y >= 0 && fb_y < fb_height) {
+                        int pixel_offset = fb_y * line_length + fb_x * (bpp/8);
+                        if (pixel_offset + 1 < framebuffer_size) {
+                            unsigned short color = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+                            back_buffer_16[pixel_offset/2] = color;
+                        }
+                    }
+                }
+            }
+
+            // 使用memcpy逐行更新前缓冲，减少画面割裂
+            for (int y = 0; y < fb_height; y++) {
+                memcpy(front_buffer + y * line_length,
+                       back_buffer + y * line_length,
+                       line_length);
+            }
+
+            stbi_image_free(img_data);
+            usleep(delay_ms * 1000);
+        }
+    } while (!loop_once);  // 根据参数决定是否循环
+
+    // 清理资源
+    for (int i = 0; i < num_files; i++) {
+        free(bmp_files[i]);
+    }
+    free(bmp_files);
+    free(back_buffer);
+    munmap(front_buffer, framebuffer_size);
+    close(fb);
+
+    return 0;
+}","{'begin': {'line': 28, 'column': 1}, 'end': {'line': 247, 'column': 2}}",play_bmp_sequence.c,"['主', '函数', '，', '用于', '解析', '命令', '命令行', '参数', '、', '打开', '帧', '缓冲', '设备', '、', '读取', '屏幕', '信息', '、', '映射', '帧', '缓冲', '到', '内存', '、', '扫描', '目录', '中', '的', 'BMP', '文件', '、', '对', '文件', '文件名', '进行', '排序', '、', '预计', '算', '背景', '景色', '背景色', '、', '进行', '动画', '循环', '并', '在', '循环', '中', '加载', '、', '显示', '图像', '，', '最后', '清理', '资源', '。']"
+34,34,34,print_usage,void,void print_usage(const char * program_name),"[{'name': 'program_name', 'type': 'const char *'}]",打印程序的使用说明，包括程序名、选项和示例。,"void print_usage(const char* program_name) {
+    printf(""Usage: %s [-r rotation] <image_path>\n"", program_name);
+    printf(""Options:\n"");
+    printf(""  -r, --rotate  Rotation angle (0, 90, 180, or 270)\n"");
+    printf(""Example:\n"");
+    printf(""  %s -r 90 image.jpg\n"", program_name);
+}","{'begin': {'line': 23, 'column': 1}, 'end': {'line': 29, 'column': 2}}",show_image.c,"['打印', '程序', '的', '使用', '说明', '，', '包括', '程序', '名', '、', '选项', '和', '示例', '。']"
+35,35,35,get_rotated_pixel,void,"void get_rotated_pixel(int x, int y, int width, int height, Rotation rotation, int * out_x, int * out_y)","[{'name': 'x', 'type': 'int'}, {'name': 'y', 'type': 'int'}, {'name': 'width', 'type': 'int'}, {'name': 'height', 'type': 'int'}, {'name': 'rotation', 'type': 'Rotation'}, {'name': 'out_x', 'type': 'int *'}, {'name': 'out_y', 'type': 'int *'}]",根据旋转角度旋转像素坐标,"void get_rotated_pixel(int x, int y, int width, int height, Rotation rotation,
+                      int *out_x, int *out_y) {
+    switch (rotation) {
+        case ROTATE_90:
+            *out_x = height - 1 - y;
+            *out_y = x;
+            break;
+        case ROTATE_180:
+            *out_x = width - 1 - x;
+            *out_y = height - 1 - y;
+            break;
+        case ROTATE_270:
+            *out_x = y;
+            *out_y = width - 1 - x;
+            break;
+        default: // ROTATE_0
+            *out_x = x;
+            *out_y = y;
+            break;
+    }
+}","{'begin': {'line': 32, 'column': 1}, 'end': {'line': 52, 'column': 2}}",show_image.c,"['根据', '旋转', '角度', '旋转', '像素', '坐标']"
+36,36,36,main,int,"int main(int argc, char *[] argv)","[{'name': 'argc', 'type': 'int'}, {'name': 'argv', 'type': 'char *[]'}]",main函数是程序的入口点，负责解析命令行参数、加载图像、打开帧缓冲设备、获取屏幕信息、调整图像尺寸、映射帧缓冲到内存、清空屏幕、显示图像并等待用户输入以退出程序。,"int main(int argc, char *argv[]) {
+    Rotation rotation = ROTATE_0;
+    int opt;
+    
+    // 解析命令行参数
+    static struct option long_options[] = {
+        {""rotate"", required_argument, 0, 'r'},
+        {0, 0, 0, 0}
+    };
+
+    while ((opt = getopt_long(argc, argv, ""r:"", long_options, NULL)) != -1) {
+        switch (opt) {
+            case 'r':
+                rotation = atoi(optarg);
+                if (rotation != 0 && rotation != 90 && rotation != 180 && rotation != 270) {
+                    fprintf(stderr, ""Invalid rotation angle. Must be 0, 90, 180, or 270.\n"");
+                    return 1;
+                }
+                break;
+            default:
+                print_usage(argv[0]);
+                return 1;
+        }
+    }
+
+    if (optind >= argc) {
+        print_usage(argv[0]);
+        return 1;
+    }
+
+    const char* image_path = argv[optind];
+
+    // 加载图像
+    int img_width, img_height, img_channels;
+    unsigned char *img_data = stbi_load(image_path, &img_width, &img_height, &img_channels, 3);
+    if (!img_data) {
+        printf(""Error loading image: %s\n"", stbi_failure_reason());
+        return 1;
+    }
+
+    printf(""Image loaded: %dx%d with %d channels\n"", img_width, img_height, img_channels);
+
+    // 打开帧缓冲设备
+    int fb = open(""/dev/fb0"", O_RDWR);
+    if (fb == -1) {
+        perror(""Error opening /dev/fb0"");
+        stbi_image_free(img_data);
+        return 1;
+    }
+
+    // 获取屏幕信息
+    struct fb_var_screeninfo vinfo;
+    struct fb_fix_screeninfo finfo;
+    
+    if (ioctl(fb, FBIOGET_VSCREENINFO, &vinfo)) {
+        perror(""Error reading variable information"");
+        close(fb);
+        stbi_image_free(img_data);
+        return 1;
+    }
+    
+    if (ioctl(fb, FBIOGET_FSCREENINFO, &finfo)) {
+        perror(""Error reading fixed information"");
+        close(fb);
+        stbi_image_free(img_data);
+        return 1;
+    }
+
+    int fb_width = vinfo.xres;
+    int fb_height = vinfo.yres;
+    int bpp = vinfo.bits_per_pixel;
+    int line_length = finfo.line_length;
+
+    printf(""Screen resolution: %dx%d\n"", fb_width, fb_height);
+    printf(""Bits per pixel: %d\n"", bpp);
+    printf(""Red: offset=%d, length=%d\n"", vinfo.red.offset, vinfo.red.length);
+    printf(""Green: offset=%d, length=%d\n"", vinfo.green.offset, vinfo.green.length);
+    printf(""Blue: offset=%d, length=%d\n"", vinfo.blue.offset, vinfo.blue.length);
+
+    // 根据旋转角度调整目标尺寸
+    int target_width = (rotation == ROTATE_90 || rotation == ROTATE_270) ? img_height : img_width;
+    int target_height = (rotation == ROTATE_90 || rotation == ROTATE_270) ? img_width : img_height;
+
+    // 计算缩放比例
+    float scale_x = (float)fb_width / target_width;
+    float scale_y = (float)fb_height / target_height;
+    float scale = (scale_x < scale_y) ? scale_x : scale_y;
+
+    // 计算显示尺寸和偏移量
+    int display_width = (int)(target_width * scale);
+    int display_height = (int)(target_height * scale);
+    int offset_x = (fb_width - display_width) / 2;
+    int offset_y = (fb_height - display_height) / 2;
+
+    // 映射帧缓冲到内存
+    size_t framebuffer_size = fb_height * line_length;
+    unsigned char* framebuffer = mmap(NULL, framebuffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
+    if (framebuffer == MAP_FAILED) {
+        perror(""Error mapping framebuffer"");
+        close(fb);
+        stbi_image_free(img_data);
+        return 1;
+    }
+
+    // 清空屏幕（设置为黑色背景）
+    memset(framebuffer, 0, framebuffer_size);
+
+    // 显示图像
+    for (int y = 0; y < display_height; y++) {
+        for (int x = 0; x < display_width; x++) {
+            // 计算源图像中的对应像素位置
+            float src_x = x / scale;
+            float src_y = y / scale;
+
+            // 根据旋转角度获取实际的源像素位置
+            int rotated_x, rotated_y;
+            get_rotated_pixel((int)src_x, (int)src_y, img_width, img_height, rotation,
+                            &rotated_x, &rotated_y);
+
+            // 获取源像素颜色
+            int src_pos = (rotated_y * img_width + rotated_x) * 3;
+            unsigned char r = img_data[src_pos];
+            unsigned char g = img_data[src_pos+1];
+            unsigned char b = img_data[src_pos+2];
+
+            // 计算目标帧缓冲区中的位置
+            int fb_x = x + offset_x;
+            int fb_y = y + offset_y;
+            int pixel_offset = fb_y * line_length + fb_x * (bpp/8);
+
+            // 将24位RGB转换为16位RGB565
+            // R: 5位 (31/255 * r)
+            // G: 6位 (63/255 * g)
+            // B: 5位 (31/255 * b)
+            unsigned short color = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+            *(unsigned short*)(framebuffer + pixel_offset) = color;
+        }
+    }
+
+    printf(""Image displayed successfully! (Rotation: %d degrees)\n"", rotation);
+    printf(""Press Enter to exit..."");
+    getchar();
+
+    // 清理资源
+    stbi_image_free(img_data);
+    munmap(framebuffer, framebuffer_size);
+    close(fb);
+
+    return 0;
+}","{'begin': {'line': 54, 'column': 1}, 'end': {'line': 203, 'column': 2}}",show_image.c,"['main', '函数', '是', '程序', '的', '入口', '点', '，', '负责', '解析', '命令', '命令行', '参数', '、', '加载', '图像', '、', '打开', '帧', '缓冲', '设备', '、', '获取', '屏幕', '信息', '、', '调整', '图像', '尺寸', '、', '映射', '帧', '缓冲', '到', '内存', '、', '清空', '屏幕', '、', '显示', '图像', '并', '等待', '用户', '输入', '以', '退出', '程序', '。']"
+37,37,37,fb_init,void,void fb_init(),[],初始化帧缓冲设备，获取屏幕信息并映射到内存。,"void fb_init(void) {
+    fb_fd = open(""/dev/fb0"", O_RDWR);
+    if (fb_fd == -1) {
+        perror(""Error opening framebuffer device"");
+        exit(1);
+    }
+
+    if (ioctl(fb_fd, FBIOGET_FSCREENINFO, &finfo)) {
+        perror(""Error reading fixed information"");
+        close(fb_fd);
+        exit(1);
+    }
+
+    if (ioctl(fb_fd, FBIOGET_VSCREENINFO, &vinfo)) {
+        perror(""Error reading variable information"");
+        close(fb_fd);
+        exit(1);
+    }
+
+    // printf(""Screen info: %dx%d, %d bpp\n"", vinfo.xres, vinfo.yres, vinfo.bits_per_pixel);
+    // printf(""Red: offset=%d, length=%d\n"", vinfo.red.offset, vinfo.red.length);
+    // printf(""Green: offset=%d, length=%d\n"", vinfo.green.offset, vinfo.green.length);
+    // printf(""Blue: offset=%d, length=%d\n"", vinfo.blue.offset, vinfo.blue.length);
+
+    screensize = vinfo.xres * vinfo.yres * vinfo.bits_per_pixel / 8;
+    fbp = (char *)mmap(0, screensize, PROT_READ | PROT_WRITE, MAP_SHARED, fb_fd, 0);
+    if ((int)fbp == -1) {
+        perror(""Error mapping framebuffer device to memory"");
+        close(fb_fd);
+        exit(1);
+    }
+}","{'begin': {'line': 35, 'column': 1}, 'end': {'line': 66, 'column': 2}}",show_text.c,"['初始', '初始化', '帧', '缓冲', '设备', '，', '获取', '屏幕', '信息', '并', '映射', '到', '内存', '。']"
+38,38,38,ft_init,void,void ft_init(const char * font_path),"[{'name': 'font_path', 'type': 'const char *'}]",初始化字体库，加载指定路径的字体文件，并设置字体大小。,"void ft_init(const char *font_path) {
+    FT_Error error;
+
+    error = FT_Init_FreeType(&library);
+    if (error) {
+        fprintf(stderr, ""Could not initialize FreeType library\n"");
+        exit(1);
+    }
+
+    error = FT_New_Face(library, font_path, 0, &face);
+    if (error) {
+        fprintf(stderr, ""Could not open font file: %s\n"", font_path);
+        FT_Done_FreeType(library);
+        exit(1);
+    }
+
+    error = FT_Set_Pixel_Sizes(face, 0, font_size);
+    if (error) {
+        fprintf(stderr, ""Could not set font size\n"");
+        FT_Done_Face(face);
+        FT_Done_FreeType(library);
+        exit(1);
+    }
+
+    // printf(""Font loaded: %s\n"", font_path);
+    // printf(""Font size: %d\n"", font_size);
+}","{'begin': {'line': 69, 'column': 1}, 'end': {'line': 95, 'column': 2}}",show_text.c,"['初始', '初始化', '字体', '字体库', '，', '加载', '指定', '路径', '的', '字体', '文件', '，', '并', '设置', '字体', '大小', '字体大小', '。']"
+39,39,39,clear_screen,void,void clear_screen(),[],该函数clear_screen通过将fbp指针指向的内存区域清零，实现了清空屏幕显示的功能。其源代码使用了memset函数来完成这一操作。,"void clear_screen(void) {
+    memset(fbp, 0, screensize);
+}","{'begin': {'line': 98, 'column': 1}, 'end': {'line': 100, 'column': 2}}",show_text.c,"['该', '函数', 'clear', '_', 'screen', '通过', '将', 'fbp', '指针', '指向', '的', '内存', '区域', '清零', '，', '实现', '了', '清空', '屏幕', '显示', '屏幕显示', '的', '功能', '。', '其', '代码', '源代码', '使用', '了', 'memset', '函数', '来', '完成', '这一', '操作', '。']"
+40,40,40,draw_pixel,void,"void draw_pixel(int x, int y, unsigned short color)","[{'name': 'x', 'type': 'int'}, {'name': 'y', 'type': 'int'}, {'name': 'color', 'type': 'unsigned short'}]","根据坐标(x, y)和颜色值画像素点","void draw_pixel(int x, int y, unsigned short color) {
+    if (x >= 0 && x < vinfo.xres && y >= 0 && y < vinfo.yres) {
+        long int location = (y * vinfo.xres + x) * (vinfo.bits_per_pixel / 8);
+        if (location >= 0 && location < screensize) {
+            *((unsigned short*)(fbp + location)) = color;
+        }
+    }
+}","{'begin': {'line': 103, 'column': 1}, 'end': {'line': 110, 'column': 2}}",show_text.c,"['根据', '坐标', '(', 'x', ',', ' ', 'y', ')', '和', '颜色', '值画', '像素', '像素点']"
+41,41,41,draw_char,void,"void draw_char(int x, int y, wchar_t c, unsigned short color)","[{'name': 'x', 'type': 'int'}, {'name': 'y', 'type': 'int'}, {'name': 'c', 'type': 'wchar_t'}, {'name': 'color', 'type': 'unsigned short'}]",根据给定的坐标、字符和颜色，在屏幕上绘制指定字符，确保字符在屏幕范围内。,"void draw_char(int x, int y, wchar_t c, unsigned short color) {
+    FT_Error error;
+    FT_GlyphSlot slot = face->glyph;
+
+    error = FT_Load_Char(face, c, FT_LOAD_RENDER);
+    if (error) {
+        printf(""Error loading character: %lc (0x%x)\n"", c, c);
+        return;
+    }
+    // printf(""Drawing char: %lc (0x%x), width=%d, height=%d, left=%d, top=%d\n"",
+    //        c, c, slot->bitmap.width, slot->bitmap.rows, 
+    //        slot->bitmap_left, slot->bitmap_top);
+
+    // 更严格的边界检查
+    if (x < 0 || y < 0 || 
+        x + slot->bitmap_left + slot->bitmap.width > vinfo.xres ||
+        y - slot->bitmap_top + slot->bitmap.rows > vinfo.yres) {
+        printf(""Character out of bounds: x=%d, y=%d, width=%d, height=%d\n"",
+               x, y, slot->bitmap.width, slot->bitmap.rows);
+        return;
+    }
+
+    // 修改像素绘制逻辑，添加更安全的边界检查
+    for (int i = 0; i < slot->bitmap.rows; i++) {
+        for (int j = 0; j < slot->bitmap.width; j++) {
+            int pixel_x = x + j + slot->bitmap_left;
+            int pixel_y = y + i - slot->bitmap_top;
+            
+            // 确保像素坐标在屏幕范围内
+            if (pixel_x >= 0 && pixel_x < vinfo.xres && 
+                pixel_y >= 0 && pixel_y < vinfo.yres) {
+                unsigned char alpha = slot->bitmap.buffer[i * slot->bitmap.pitch + j];
+                if (alpha > 0) {
+                    draw_pixel(pixel_x, pixel_y, color);
+                }
+            }
+        }
+    }
+}","{'begin': {'line': 113, 'column': 1}, 'end': {'line': 151, 'column': 2}}",show_text.c,"['根据', '给定', '的', '坐标', '、', '字符', '和', '颜色', '，', '在', '屏幕', '上', '绘制', '指定', '字符', '，', '确保', '字符', '在', '屏幕', '范围', '内', '。']"
+42,42,42,draw_string,void,"void draw_string(const wchar_t * str, unsigned short color, int h_align, int v_align)","[{'name': 'str', 'type': 'const wchar_t *'}, {'name': 'color', 'type': 'unsigned short'}, {'name': 'h_align', 'type': 'int'}, {'name': 'v_align', 'type': 'int'}]",绘制字符串，支持水平垂直居中对齐，处理换行和自动换行。,"void draw_string(const wchar_t *str, unsigned short color, int h_align, int v_align) {
+    int start_x = 0;
+    int line_height = font_size + 2;
+    
+    // 计算文字总宽度和高度
+    int max_width = 0;
+    int current_width = 0;
+    int lines = 1;
+    const wchar_t *temp = str;
+    int last_char_left = 0;
+    
+    while (*temp) {
+        if (*temp == L'\n') {
+            lines++;
+            if (current_width > max_width) {
+                max_width = current_width;
+            }
+            current_width = 0;
+        } else {
+            FT_Load_Char(face, *temp, FT_LOAD_RENDER);
+            current_width += face->glyph->advance.x >> 6;
+            last_char_left = face->glyph->bitmap_left;
+        }
+        temp++;
+    }
+    if (current_width > max_width) {
+        max_width = current_width;
+    }
+    
+    // 根据水平对齐方式调整起始x坐标
+    switch (h_align) {
+        case ALIGN_CENTER:
+            start_x = (vinfo.xres - max_width) / 2;
+            break;
+        case ALIGN_RIGHT:
+            // 考虑最后一个字符的bitmap_left，确保文字完全在屏幕内
+            start_x = vinfo.xres - max_width - last_char_left;
+            break;
+        case ALIGN_LEFT:
+        default:
+            start_x = 0;  // 左对齐时从x=0开始
+            break;
+    }
+    
+    // 根据垂直对齐方式调整起始y坐标
+    int total_height = lines * line_height;
+    int y;
+    switch (v_align) {
+        case ALIGN_MIDDLE:
+            // 考虑第一个字符的bitmap_top和顶部font_size偏移，确保文字垂直居中
+            y = (vinfo.yres - total_height) / 2 + font_size/2;
+            break;
+        case ALIGN_BOTTOM:
+            y = vinfo.yres - total_height;
+            break;
+        case ALIGN_TOP:
+        default:
+            y = font_size;  // 顶部对齐时从y=font_size开始
+            break;
+    }
+    
+    int x = start_x;
+    
+    while (*str) {
+        if (*str == L'\n') {
+            y += line_height;
+            x = start_x;
+        } else {
+            if (y + line_height > vinfo.yres) {
+                break;
+            }
+            
+            draw_char(x, y, *str, color);
+            x += face->glyph->advance.x >> 6;
+            
+            // 只有在左对齐时才进行自动换行
+            if (h_align == ALIGN_LEFT && x > vinfo.xres - font_size) {
+                y += line_height;
+                x = start_x;
+            }
+        }
+        str++;
+    }
+}","{'begin': {'line': 154, 'column': 1}, 'end': {'line': 237, 'column': 2}}",show_text.c,"['绘制', '字符', '字符串', '，', '支持', '水平', '垂直', '居中', '对齐', '，', '处理', '换行', '和', '自动', '换行', '。']"
+43,43,43,main,int,"int main(int argc, char ** argv)","[{'name': 'argc', 'type': 'int'}, {'name': 'argv', 'type': 'char **'}]",程序入口，处理命令行参数，设置字体、颜色、对齐方式，并执行文本渲染和清理操作。,"int main(int argc, char **argv) {
+    if (argc != 6) {
+        fprintf(stderr, ""Usage: %s <text> <font_size> <color> <h_align> <v_align>\n"", argv[0]);
+        fprintf(stderr, ""Example: %s \""Hello World\"" 24 0xFFFF 1 1\n"", argv[0]);
+        fprintf(stderr, ""h_align: 0=left, 1=center, 2=right\n"");
+        fprintf(stderr, ""v_align: 0=top, 1=middle, 2=bottom\n"");
+        return 1;
+    }
+
+    // 设置locale以支持中文
+    setlocale(LC_ALL, ""C.UTF-8"");
+
+    // 设置字体大小
+    font_size = atoi(argv[2]);
+    if (font_size < 8 || font_size > 72) {
+        fprintf(stderr, ""Font size must be between 8 and 72\n"");
+        return 1;
+    }
+
+    // 解析颜色参数
+    unsigned short color;
+    if (sscanf(argv[3], ""0x%hx"", &color) != 1) {
+        fprintf(stderr, ""Invalid color format. Use 0xRRRRRGGGGGGBBBBB (RGB565)\n"");
+        return 1;
+    }
+
+    // 解析对齐参数
+    int h_align = atoi(argv[4]);
+    int v_align = atoi(argv[5]);
+    if (h_align < 0 || h_align > 2 || v_align < 0 || v_align > 2) {
+        fprintf(stderr, ""Alignment parameters must be 0, 1, or 2\n"");
+        return 1;
+    }
+
+    // 初始化帧缓冲
+    fb_init();
+
+    // 初始化FreeType
+    ft_init(""/home/aku/xiaozhi/font/HarmonyOS_Sans_SC_Regular.ttf"");
+
+    // 清屏
+    clear_screen();
+
+    // 转换输入字符串为宽字符
+    wchar_t wtext[256];
+    // printf(""Input text: %s\n"", argv[1]);
+    // printf(""Input length: %zu\n"", strlen(argv[1]));
+    
+    size_t converted = mbstowcs(wtext, argv[1], 256);
+    if (converted == (size_t)-1) {
+        fprintf(stderr, ""Error converting text to wide characters\n"");
+        perror(""mbstowcs"");
+        // 尝试直接使用宽字符
+        swprintf(wtext, 256, L""%s"", argv[1]);
+        printf(""Using swprintf as fallback\n"");
+    } else {
+        // printf(""Converted %zu characters\n"", converted);
+    }
+
+    // 显示用户输入的文字，使用指定的颜色和对齐方式
+    draw_string(wtext, color, h_align, v_align);
+
+    // 清理资源
+    FT_Done_Face(face);
+    FT_Done_FreeType(library);
+    munmap(fbp, screensize);
+    close(fb_fd);
+
+    return 0;
+}","{'begin': {'line': 239, 'column': 1}, 'end': {'line': 308, 'column': 2}}",show_text.c,"['程序', '入口', '，', '处理', '命令', '命令行', '参数', '，', '设置', '字体', '、', '颜色', '、', '对齐', '方式', '，', '并', '执行', '文本', '渲染', '和', '清理', '操作', '。']"
+44,44,44,get_color_from_name,Color,Color get_color_from_name(const char * color_name),"[{'name': 'color_name', 'type': 'const char *'}]",根据颜色名称返回对应的颜色值,"Color get_color_from_name(const char* color_name) {
+    Color color = {0, 0, 0};
+    
+    if (strcmp(color_name, ""red"") == 0) {
+        color.red = 255;
+    } else if (strcmp(color_name, ""green"") == 0) {
+        color.green = 255;
+    } else if (strcmp(color_name, ""blue"") == 0) {
+        color.blue = 255;
+    } else if (strcmp(color_name, ""white"") == 0) {
+        color.red = 255;
+        color.green = 255;
+        color.blue = 255;
+    }
+    
+    return color;
+}","{'begin': {'line': 18, 'column': 1}, 'end': {'line': 34, 'column': 2}}",test.c,"['根据', '颜色', '名称', '返回', '对应', '的', '颜色', '值']"
+45,45,45,main,int,int main(),[],打开帧缓冲设备，获取屏幕信息，映射帧缓冲到内存，清空屏幕并测试红色、绿色和蓝色，最后清理资源。,"int main() {
+    // 打开帧缓冲设备
+    int fb = open(""/dev/fb0"", O_RDWR);
+    if (fb == -1) {
+        perror(""Error opening /dev/fb0"");
+        return 1;
+    }
+
+    // 获取屏幕信息
+    struct fb_var_screeninfo vinfo;
+    struct fb_fix_screeninfo finfo;
+    
+    if (ioctl(fb, FBIOGET_VSCREENINFO, &vinfo)) {
+        perror(""Error reading variable information"");
+        close(fb);
+        return 1;
+    }
+    
+    if (ioctl(fb, FBIOGET_FSCREENINFO, &finfo)) {
+        perror(""Error reading fixed information"");
+        close(fb);
+        return 1;
+    }
+
+    // 使用实际分辨率
+    int fb_width = vinfo.xres;
+    int fb_height = vinfo.yres;
+    int bpp = vinfo.bits_per_pixel;
+    int line_length = finfo.line_length;
+
+    printf(""Screen resolution: %dx%d\n"", fb_width, fb_height);
+    printf(""Bits per pixel: %d\n"", bpp);
+    printf(""Color format details:\n"");
+    printf(""Red:   offset=%d, length=%d, msb_right=%d\n"", vinfo.red.offset, vinfo.red.length, vinfo.red.msb_right);
+    printf(""Green: offset=%d, length=%d, msb_right=%d\n"", vinfo.green.offset, vinfo.green.length, vinfo.green.msb_right);
+    printf(""Blue:  offset=%d, length=%d, msb_right=%d\n"", vinfo.blue.offset, vinfo.blue.length, vinfo.blue.msb_right);
+
+    // 映射帧缓冲到内存
+    size_t framebuffer_size = fb_height * line_length;
+    unsigned char* framebuffer = mmap(NULL, framebuffer_size, PROT_READ | PROT_WRITE, MAP_SHARED, fb, 0);
+    if (framebuffer == MAP_FAILED) {
+        perror(""Error mapping framebuffer"");
+        close(fb);
+        return 1;
+    }
+
+    // 清空屏幕（设置为黑色背景）
+    memset(framebuffer, 0, framebuffer_size);
+
+    // 测试红色
+    printf(""Testing RED...\n"");
+    for (int y = 0; y < 40; y++) {
+        for (int x = 0; x < fb_width; x++) {
+            int pixel_offset = y * line_length + x * (bpp/8);
+            unsigned short color = (0x1F << 11); // R=31, G=0, B=0
+            *(unsigned short*)(framebuffer + pixel_offset) = color;
+        }
+    }
+
+    // 测试绿色
+    printf(""Testing GREEN...\n"");
+    for (int y = 40; y < 80; y++) {
+        for (int x = 0; x < fb_width; x++) {
+            int pixel_offset = y * line_length + x * (bpp/8);
+            unsigned short color = (0x3F << 5); // R=0, G=63, B=0
+            *(unsigned short*)(framebuffer + pixel_offset) = color;
+        }
+    }
+
+    // 测试蓝色
+    printf(""Testing BLUE...\n"");
+    for (int y = 80; y < 120; y++) {
+        for (int x = 0; x < fb_width; x++) {
+            int pixel_offset = y * line_length + x * (bpp/8);
+            unsigned short color = 0x1F; // R=0, G=0, B=31
+            *(unsigned short*)(framebuffer + pixel_offset) = color;
+        }
+    }
+
+    printf(""Color test completed. Press Enter to exit..."");
+    getchar();
+
+    // 清理资源
+    munmap(framebuffer, framebuffer_size);
+    close(fb);
+
+    return 0;
+}","{'begin': {'line': 36, 'column': 1}, 'end': {'line': 123, 'column': 2}}",test.c,"['打开', '帧', '缓冲', '设备', '，', '获取', '屏幕', '信息', '，', '映射', '帧', '缓冲', '到', '内存', '，', '清空', '屏幕', '并', '测试', '红色', '、', '绿色', '和', '蓝色', '，', '最后', '清理', '资源', '。']"

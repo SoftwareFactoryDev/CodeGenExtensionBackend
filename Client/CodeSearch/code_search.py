@@ -15,18 +15,17 @@ class NlRetriever:
         key_words_tokens = []
         for key_word in key_words:
             key_words_tokens += list(jieba.cut_for_search(key_word))
-        bm25 = BM25Okapi([doc_tokens])
+        bm25 = BM25Okapi(doc_tokens)
         score = bm25.get_scores(key_words_tokens)
-        return score[0]
+        return score
     
     def retrieval(self, query_texts, top_k=20):
         if isinstance(query_texts, str):
             query_texts = [query_texts]
-        self.data['bm25_score'] = self.data['sum_tokenize'].apply(
-            lambda x: self.bm25_compute(query_texts, x)
-        )
-        result = self.data.sort_values('bm25_score', ascending=True)
+        self.data['bm25_score'] = self.bm25_compute(query_texts, self.data['sum_tokenize'].tolist())
+        result = self.data.sort_values('bm25_score', ascending=False)
         result = deepcopy(result.head(top_k).reset_index(drop=True))
+        self.data['bm25_score'] = -1
         return result
 
 def code_search(codebase_path, key_words, top_K = 20):

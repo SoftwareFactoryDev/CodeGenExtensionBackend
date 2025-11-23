@@ -46,9 +46,9 @@ code_gen_instruct = ChatPromptBase(
     """,
     user = """这是代码生成对话历史(可能没有)。
     @HISTORY:{history}
-    这是我的需求，请根据它实现功能
+    这是我的需求，请根据它实现功能，该函数在遵守CODE_RULES的同时满足我的需求
     @REQUIREMENT:{requirement}
-    该函数在遵守CODE_RULES的同时满足我的需求。
+    请你自行根据我给你发送的内容，判断你要做的事情。
     """,
     example = """
     这是我的需求，请根据它实现功能。

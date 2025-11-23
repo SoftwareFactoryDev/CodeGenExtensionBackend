@@ -9,14 +9,18 @@ def generate_raw(requirement):
     ref_sol = code_search(key_words=requirement, top_K=3)
     param_list = []
     result_list = []
-    for index, row in ref_sol.iterrows():
-        param_list.append({'requirement':row['summary']})
-        result_list.append(row['source_code'])
-    messages = prompt_tem.add_example(param_list=param_list, result_list=result_list)
+    if len(ref_sol) > 0:
+        for index, row in ref_sol.iterrows():
+            param_list.append({'requirement':row['summary']})
+            result_list.append(row['source_code'])
+        messages = prompt_tem.add_example(param_list=param_list, result_list=result_list)
     result = generate_api(messages)
     text = '【检索结果】:\n'
-    for index, row in ref_sol.iterrows():
-        text += f"""【{index+1}】\n{row['summary']}\n{row['signature']}\n"""
+    if len(ref_sol) > 0:
+        for index, row in ref_sol.iterrows():
+            text += f"""【{index+1}】\n{row['summary']}\n{row['signature']}\n"""
+    else:
+        text += '未检索到相关代码示例。\n'
     result = text + '\n【生成结果】:\n' + result
     return result
 

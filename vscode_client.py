@@ -1,10 +1,16 @@
+import os 
 import json
+from datetime import datetime
+import shutil
+
+import pandas as pd
 from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
-from client.CodeBaseBuild.build_codebase import get_repository,build_code_base
 
+
+from client.CodeBaseBuild.build_codebase import get_repository,repo_parse,sum_tokenize,gen_sum
 from client.CodeSearch.code_search import code_search
 from client.CodeGeneration.generation import generate_api
 from client.CodeGeneration.prompt import code_gen_instruct
@@ -29,17 +35,43 @@ class BuildResponse(BaseModel):
 @app.post("/api/v1/bcb", response_model=BuildResponse)
 def build(request: BuildRequest):
     
+    print(f'********** 接收到代码库复用请求 {datetime.now()} **********')
+
     # 从 git地址克隆代码库
     try:
         distination = config['codeBaseBuild']['repoPath']
-        repo_path = get_repository(request.repo_url, distination)
+        repo_path,version = get_repository(request.repo_url, distination)
+        print(f'********** 代码库克隆成功 {datetime.now()} **********')
     except Exception as e:
-        print(f'【Error】代码库克隆失败\n{e}')
+        print(f'********** 代码库克隆失败  {e} **********')
+        return {"message": f'代码库克隆失败'}
     
+    output_path=config['codeBaseBuild']['codebasePath']
     #解析代码库
-    result = build_code_base(repo_path=repo_path, lib_path=config['codeBaseBuild']['clang_Path'], output_path=config['codeBaseBuild']['codebasePath'])
+    if os.path.exists(output_path) and os.path.isdir(output_path):
+        output_path = os.path.join(output_path, f'{os.path.basename(repo_path)}_{version}.csv')
+    else:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    return result
+    print(f'********** 开始提取C语言函数 {datetime.now()} **********')
+    result = repo_parse(repo_path=repo_path,lib_path=config['codeBaseBuild']['clang_Path'], output_path=output_path, version=version)
+    print(f'********** {result} **********')
+
+    print(f'********** 开始生成代码库摘要 {datetime.now()} **********')
+    result = gen_sum(codebase_path=output_path)
+    print(f'********** {result} **********')
+
+    print(f'********** 开始生成代码库摘要向量和分词 {datetime.now()} **********')
+    result = sum_tokenize(codebase_path=output_path)
+    print(f'********** {result} **********')
+    print(f'********** 代码库复用完成 {datetime.now()} **********')
+    repo_name = os.path.basename(repo_path)
+    for file in os.listdir(os.path.dirname(output_path)):
+        if repo_name in file and file.endswith('.csv') and file != os.path.basename(output_path):
+            output_path = os.path.join(os.path.dirname(output_path), file)
+            break
+    codebase = pd.read_csv(output_path)
+    return {"message": f'代码库复用完成: {os.path.basename(repo_path)}, 提交版本：{version}, 总共解析函数数目: {len(codebase)}'}
 
 class GenerateRequest(BaseModel):
     prompt: str
@@ -51,6 +83,9 @@ class GenerateResponse(BaseModel):
 
 @app.post("/api/v1/gen", response_model=GenerateResponse, tags=["Generate"])
 def generate(request: GenerateRequest):
+
+    print(f'********** 接收到代码生成请求 {datetime.now()} **********')
+
     if not request.history:
         history = ''
     else:
@@ -59,27 +94,37 @@ def generate(request: GenerateRequest):
     prompt_templete = code_gen_instruct
     prompt_templete.generate_prompt(user_param={'history':history, 'requirement': request.prompt})
 
+    print(f'********** 完成提示词加载 {datetime.now()} **********')
+
+
     # reference_retrievel
     examples = code_search(codebase_path=config['codeBaseBuild']['codebasePath'], key_words=request.prompt, top_K=5)
     param_list = []
     result_list = []
-    for example in examples.iterrows():
+    messages = prompt_templete.generate_message()
+    for index,example in examples.iterrows():
         param_list.append({'requirement': example['summary']})
         result_list.append(example['source_code'])
-    prompt_templete.add_example(param_list, result_list)    
-
+    if len(result_list) > 0:
+        messages = prompt_templete.add_example(param_list, result_list)    
+    print(f'********** 完成检索  **********')
+    print(f'检索结果: {result_list}')
     # code generation
-    messages = prompt_templete.generate_message()
     host = config['llm']['url']
     model = config['llm']['model']
     key = config['llm']['key']
     code = generate_api(messages, host=host, model=model, key=key)
+    print(f'********** 完成生成 {datetime.now()} **********')
+    print(f'--------------提示词-------\n{messages}')
+    print(f'--------------生成结果-------\n{code}')
+
     return {"code":code}
+
 
 # ==================== 主程序 ====================
 if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000
+        port=14514
 )

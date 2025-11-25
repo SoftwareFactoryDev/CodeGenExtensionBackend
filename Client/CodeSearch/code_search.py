@@ -14,11 +14,18 @@ class NlRetriever:
        
         key_words_tokens = []
         for key_word in key_words:
-            key_words_tokens += list(jieba.cut_for_search(key_word))
+            tokens = list(jieba.cut_for_search(key_word))
+            tokens = [token for token in tokens if token not in self.stopwords]
+            key_words_tokens.extend(tokens)
         bm25 = BM25Okapi(doc_tokens)
         score = bm25.get_scores(key_words_tokens)
         return score
     
+    def load_stopwords(self, stopword_path):
+        with open(stopword_path, 'r', encoding='utf-8') as f:
+            stopwords = f.read().splitlines()
+        self.stopwords = stopwords
+
     def retrieval(self, query_texts, top_k=3):
         if isinstance(query_texts, str):
             query_texts = [query_texts]
@@ -28,16 +35,7 @@ class NlRetriever:
         self.data['bm25_score'] = -1
         return result
 
-def code_search(codebase_path, key_words, top_K = 3):
-    retriever = NlRetriever()
-    data = []
-    for file in os.listdir(codebase_path):
-        item = pd.read_csv(os.path.join(codebase_path, file))
-        item['repo_name'] = file.split('.')[00]
-        if len(data) == 0:
-            data = item
-        else:
-            data - pd.concat([data, item])
-    retriever.data_import(data)
+def code_search(retriever, key_words, top_K = 3):
+
     result = retriever.retrieval(key_words, top_k=top_K)
     return result

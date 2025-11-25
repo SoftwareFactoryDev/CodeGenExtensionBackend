@@ -99,9 +99,15 @@ def sum_embedding(codebase_path):
     codebase.to_csv(codebase_path, index=True, encoding='utf-8')
     return f'成功生成摘要向量'
 
-def sum_tokenize(codebase_path):
+def sum_tokenize(codebase_path, stopword_path=None):
     codebase = pd.read_csv(codebase_path)
-    codebase['sum_tokenize'] = codebase['summary'].apply(lambda x: list(jieba.cut_for_search(x)))
+    if not stopword_path:
+        codebase['sum_tokenize'] = codebase['summary'].apply(lambda x: list(jieba.cut_for_search(x)))
+    else:
+        with open(stopword_path, 'r', encoding='utf-8') as f:
+            stopwords = f.read().splitlines()
+        codebase['sum_tokenize'] = codebase['summary'].apply(lambda x: list(jieba.cut_for_search(x)))
+        codebase['sum_tokenize'] = codebase['summary'].apply(lambda x: [token for token in x if token not in stopwords])
     codebase.to_csv(codebase_path, index=True, encoding='utf-8')
     return f'成功预分词'
     

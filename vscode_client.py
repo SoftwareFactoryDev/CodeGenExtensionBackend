@@ -98,13 +98,15 @@ def generate(request: GenerateRequest):
 
 
     # reference_retrievel
-    examples = code_search(codebase_path=config['codeBaseBuild']['codebasePath'], key_words=request.prompt, top_K=5)
+    k = config['CodeGeneration']['topk']
+    examples = code_search(codebase_path=config['codeBaseBuild']['codebasePath'], key_words=request.prompt, top_K=k)
     param_list = []
     result_list = []
     messages = prompt_templete.generate_message()
     for index,example in examples.iterrows():
-        param_list.append({'requirement': example['summary']})
-        result_list.append(example['source_code'])
+        if float(example['bm25_score']) > 0:
+            param_list.append({'requirement': example['summary']})
+            result_list.append(example['source_code'])
     if len(result_list) > 0:
         messages = prompt_templete.add_example(param_list, result_list)    
     print(f'********** 完成检索  **********')

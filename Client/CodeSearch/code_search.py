@@ -19,7 +19,7 @@ class NlRetriever:
         score = bm25.get_scores(key_words_tokens)
         return score
     
-    def retrieval(self, query_texts, top_k=20):
+    def retrieval(self, query_texts, top_k=3):
         if isinstance(query_texts, str):
             query_texts = [query_texts]
         self.data['bm25_score'] = self.bm25_compute(query_texts, self.data['sum_tokenize'].tolist())
@@ -28,7 +28,7 @@ class NlRetriever:
         self.data['bm25_score'] = -1
         return result
 
-def code_search(codebase_path, key_words, top_K = 20):
+def code_search(codebase_path, key_words, top_K = 3):
     retriever = NlRetriever()
     data = []
     for file in os.listdir(codebase_path):

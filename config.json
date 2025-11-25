@@ -4,6 +4,9 @@
         "codebasePath":"D:/Work/lab/20251117-20251118-一飞院/CodeGeneration/data",
         "clang_Path":"D:/Environment/Development/Clang/install/LLVM/bin/libclang.dll"
     },
+    "CodeGeneration":{
+        "topk":3
+    },
     "llm":{
         "url":"https://api.hunyuan.cloud.tencent.com/v1",
         "model":"hunyuan-lite",

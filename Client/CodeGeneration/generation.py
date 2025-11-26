@@ -1,12 +1,12 @@
 from client.CodeGeneration.prompt import code_gen_instruct
 from client.CodeBaseBuild.llm_gen import generate_api
-from client.CodeSearch.code_search import code_search
+from client.CodeSearch.code_search import code_search_custom
 def generate_raw(requirement):
     
     prompt_tem = code_gen_instruct
     prompt_tem.generate_prompt(user_param={'requirement':requirement})
     messages = prompt_tem.generate_message()
-    ref_sol = code_search(key_words=requirement, top_K=3)
+    ref_sol = code_search_custom(key_words=requirement, top_K=3)
     param_list = []
     result_list = []
     if len(ref_sol) > 0:

@@ -11,7 +11,7 @@ import uvicorn
 
 
 from client.CodeBaseBuild.build_codebase import get_repository,repo_parse,sum_tokenize,gen_sum
-from client.CodeSearch.code_search import code_search
+from client.CodeSearch.code_search import code_search_custom
 from client.CodeGeneration.generation import generate_api
 from client.CodeGeneration.prompt import code_gen_instruct
 from client.CodeGeneration.content_process import history_content
@@ -32,14 +32,6 @@ retriever = NlRetriever()
 codebase_path = config['codeBaseBuild']['codebasePath']
 stopword_path = config['codeBaseBuild']['stopword_path']
 data = []
-for file in os.listdir(codebase_path):
-    item = pd.read_csv(os.path.join(codebase_path, file))
-    item['repo_name'] = file.split('.')[00]
-    if len(data) == 0:
-        data = item
-    else:
-        data - pd.concat([data, item])
-retriever.data_import(data)
 retriever.load_stopwords(stopword_path)
 
 class BuildRequest(BaseModel):
@@ -80,14 +72,14 @@ def build(request: BuildRequest):
     print(f'********** 开始生成代码库摘要向量和分词 {datetime.now()} **********')
     result = sum_tokenize(codebase_path=output_path)
     print(f'********** {result} **********')
-    print(f'********** 代码库复用完成 {datetime.now()} **********')
+    print(f'********** 代码库构建完成 {datetime.now()} **********')
     repo_name = os.path.basename(repo_path)
     for file in os.listdir(os.path.dirname(output_path)):
         if repo_name in file and file.endswith('.csv') and file != os.path.basename(output_path):
             output_path = os.path.join(os.path.dirname(output_path), file)
             break
     codebase = pd.read_csv(output_path)
-    return {"message": f'代码库复用完成: {os.path.basename(repo_path)}, 提交版本：{version}, 总共解析函数数目: {len(codebase)}'}
+    return {"message": f'代码库构建完成: {os.path.basename(repo_path)}, 提交版本：{version}, 总共解析函数数目: {len(codebase)}'}
 
 class GenerateRequest(BaseModel):
     prompt: str
@@ -115,7 +107,7 @@ def generate(request: GenerateRequest):
 
     # reference_retrievel
     k = config['CodeGeneration']['topk']
-    examples = code_search(retriever=retriever, key_words=request.prompt, top_K=k)
+    examples = code_search_custom(retriever=retriever, key_words=request.prompt, top_K=k, codebase_path=codebase_path)
     param_list = []
     result_list = []
     messages = prompt_templete.generate_message()

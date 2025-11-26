@@ -8,6 +8,10 @@
     "CodeGeneration":{
         "topk":3
     },
+    "CodeSearch":{
+        "llama_index_path":"./llama_index",
+        "topk":3
+    },
     "llm":{
         "url":"https://api.hunyuan.cloud.tencent.com/v1",
         "model":"hunyuan-lite",

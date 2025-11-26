@@ -8,6 +8,9 @@ import stat
 from git import Repo
 from copy import deepcopy
 import jieba
+from llama_index import Document, ServiceContext
+from llama_index.retrievers import BM25Retriever
+from llama_index.core import SimpleKeywordTableIndex
 
 from client.CodeBaseBuild.CParser import CParser
 from client.CodeBaseBuild.prompt import function_sum_template
@@ -159,3 +162,7 @@ def rm_repo(repo_path):
         for file in files:
             os.chmod(os.path.join(root, file), stat.S_IRWXU)
     shutil.rmtree(repo_path)
+
+# def create_bm25_retriever(data, init=False):
+    
+    

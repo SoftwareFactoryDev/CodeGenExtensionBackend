@@ -1,6 +1,6 @@
 import json
 
-from client.CodeGeneration.prompt import code_gen_retlist
+# from client.CodeGeneration.prompt import code_gen_retlist
 from client.CodeGeneration.content_process import history_content
 from client.CodeGeneration.generation import generate_api
 

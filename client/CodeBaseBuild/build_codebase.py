@@ -8,9 +8,7 @@ import stat
 from git import Repo
 from copy import deepcopy
 import jieba
-from llama_index import Document, ServiceContext
-from llama_index.retrievers import BM25Retriever
-from llama_index.core import SimpleKeywordTableIndex
+
 
 from client.CodeBaseBuild.CParser import CParser
 from client.CodeBaseBuild.prompt import function_sum_template

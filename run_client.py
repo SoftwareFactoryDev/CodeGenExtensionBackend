@@ -16,7 +16,6 @@ def main():
         for index in range(0, len(req_list), size):
             req_group = req_list[index:index+size]
             req_cont = history_content(req_group)
-            prompt = code_gen_retlist
             prompt.generate_prompt(user_param={'req_list':req_cont})
             messages = prompt.generate_message()
             response = generate_api(messages, host='http://10.13.1.104:14516/v1/')

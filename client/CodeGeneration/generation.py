@@ -22,6 +22,8 @@ def generate_raw(requirement):
     else:
         text += '未检索到相关代码示例。\n'
     result = text + '\n【生成结果】:\n' + result
+
+    
     return result
 
 def generate_raw(requirement):

@@ -96,6 +96,7 @@ class NlRetriever:
         return df
 
 def code_search_custom(retriever, key_words, codebase_path, top_K = 3):
+    data = []
     for file in os.listdir(codebase_path):
         item = pd.read_csv(os.path.join(codebase_path, file))
         item['repo_name'] = file.split('.')[00]
@@ -106,3 +107,5 @@ def code_search_custom(retriever, key_words, codebase_path, top_K = 3):
     retriever.data_import(data)
     result = retriever.retrieval(key_words, top_k=top_K)
     return result
+
+

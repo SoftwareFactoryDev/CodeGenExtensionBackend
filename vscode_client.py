@@ -62,7 +62,7 @@ def build(request: BuildRequest):
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     print(f'********** 开始提取C语言函数 {datetime.now()} **********')
-    result = repo_parse(repo_path=repo_path,lib_path=config['codeBaseBuild']['clang_Path'], output_path=output_path, version=version)
+    result = repo_parse(repo_path=repo_path,lib_path=config['codeBaseBuild']['clang_Path'], output_path=output_path, version=version, max_workers=config['codeBaseBuild']['max_workers'])
     print(f'********** {result} **********')
 
     print(f'********** 开始生成代码库摘要 {datetime.now()} **********')

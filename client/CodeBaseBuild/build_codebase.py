@@ -9,6 +9,7 @@ from git import Repo
 from copy import deepcopy
 import jieba
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from client.CodeBaseBuild.CParser import CParser
 from client.CodeBaseBuild.prompt import function_sum_template
@@ -16,28 +17,61 @@ from client.CodeBaseBuild.llm_gen import generate_api
 
 import pandas as pd
 
-def repo_parse(repo_path, lib_path, output_path, version):
-    
+def parse_single_file(args):
+    c_file, c_parser, repo_path = args
+    c_parser.parse_file(c_file)
+    for func in c_parser.functions:
+        func["file_path"] = os.path.relpath(c_file, repo_path)
+    return deepcopy(c_parser.functions)
+
+def repo_parse(repo_path, lib_path, output_path, version, max_workers=4):
     if os.path.exists(output_path):
         result = (f'代码库{os.path.basename(repo_path)}_{version}已存在，跳过解析步骤，仅进行数据解析。')
     else:
         c_files = glob.glob(f"{repo_path}/**/*.c", recursive=True)
         h_files = glob.glob(f"{repo_path}/**/*.h", recursive=True)
-
-        c_parser = CParser(lib_path)
-        all_functions = []
-
-        for index, c_file in enumerate((c_files + h_files)):
-            print(f'processing{index+1}/{len((c_files + h_files))}:{c_file}')
-            c_parser.parse_file(c_file)
-            for func in c_parser.functions:
-                func["file_path"] = os.path.relpath(c_file, repo_path)
-            all_functions.extend(deepcopy(c_parser.functions))
+        all_files = c_files + h_files
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            all_functions = []
+            tasks = [(file, CParser(lib_path), repo_path) for file in all_files]
+            future_to_file = {executor.submit(parse_single_file, task): task[0] for task in tasks}
+            for future in as_completed(future_to_file):
+                file = future_to_file[future]
+                try:
+                    functions = future.result()
+                    all_functions.extend(functions)
+                    print(f'已处理: {file}')
+                except Exception as exc:
+                    print(f'文件 {file} 处理时发生异常: {exc}')
         df = pd.DataFrame(all_functions)
         df.to_csv(output_path, index=False, encoding='utf-8-sig')
         result = f'代码库{os.path.basename(repo_path)}_{version}解析完成。'
     rm_repo(repo_path)
     return result
+
+# def repo_parse(repo_path, lib_path, output_path, version):
+    
+#     if os.path.exists(output_path):
+#         result = (f'代码库{os.path.basename(repo_path)}_{version}已存在，跳过解析步骤，仅进行数据解析。')
+#     else:
+#         c_files = glob.glob(f"{repo_path}/**/*.c", recursive=True)
+#         h_files = glob.glob(f"{repo_path}/**/*.h", recursive=True)
+
+#         c_parser = CParser(lib_path)
+#         all_functions = []
+
+#         for index, c_file in enumerate((c_files + h_files)):
+#             print(f'processing{index+1}/{len((c_files + h_files))}:{c_file}')
+#             c_parser.parse_file(c_file)
+#             for func in c_parser.functions:
+#                 func["file_path"] = os.path.relpath(c_file, repo_path)
+#             all_functions.extend(deepcopy(c_parser.functions))
+#         df = pd.DataFrame(all_functions)
+#         df.to_csv(output_path, index=False, encoding='utf-8-sig')
+#         result = f'代码库{os.path.basename(repo_path)}_{version}解析完成。'
+#     rm_repo(repo_path)
+#     return result
 
 def gen_sum(codebase_path):
 

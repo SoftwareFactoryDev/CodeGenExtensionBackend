@@ -124,6 +124,7 @@ def generate(request: GenerateRequest):
     model = config['llm']['model']
     key = config['llm']['key']
     code = generate_api(messages, host=host, model=model, key=key)
+
     print(f'********** 完成生成 {datetime.now()} **********')
     print(f'--------------提示词-------\n{messages}')
     print(f'--------------生成结果-------\n{code}')

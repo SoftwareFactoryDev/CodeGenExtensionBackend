@@ -4,14 +4,16 @@
         "codebasePath":"./data",
         "clang_Path":"D:/Environment/Development/Clang/install/LLVM/bin/libclang.dll",
         "stopword_path":"./client/停用词表.txt",
-        "max_workers":10
+        "max_workers":4
     },
     "CodeGeneration":{
         "topk":3
     },
     "CodeSearch":{
         "llama_index_path":"./llama_index",
-        "topk":3
+        "topk":3,
+        "columns":["name","return_type","signature","params","summary","source_code","extent","file_path","sum_tokenize"],
+        "num_workers": 4
     },
     "llm":{
         "url":"https://api.hunyuan.cloud.tencent.com/v1",

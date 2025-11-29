@@ -95,17 +95,20 @@ class NlRetriever:
         
         return df
 
-def code_search_custom(retriever, key_words, codebase_path, top_K = 3):
+def code_search_custom(retriever, key_words, codebase_path, columns, top_K = 3):
     data = []
     for file in os.listdir(codebase_path):
-        item = pd.read_csv(os.path.join(codebase_path, file))
+        if columns:
+            item = pd.read_csv(os.path.join(codebase_path, file), usecols=columns)
+        else:
+            item = pd.read_csv(os.path.join(codebase_path, file))
         item['repo_name'] = file.split('.')[00]
         if len(data) == 0:
             data = item
         else:
-            data - pd.concat([data, item])
+            data = pd.concat([data, item], ignore_index=True)
     retriever.data_import(data)
-    result = retriever.retrieval(key_words, top_k=top_K)
+    result = retriever.custom_retrieval(key_words, top_k=top_K)
     return result
 
 

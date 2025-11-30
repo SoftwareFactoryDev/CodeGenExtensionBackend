@@ -4,12 +4,8 @@ from client.CodeBaseBuild.llm_gen import generate_api
 
 class CParser:
 
-    def __init__(self, libclang_path):
-        
-        if libclang_path:
-            cl.Config.set_library_file(libclang_path)
-        else:
-            raise ValueError("Please provide the path to libclang shared library -> libclang.dll.")
+    def __init__(self):
+    
         self.index = cl.Index.create(excludeDecls=True)
         self.functions = []
 
@@ -24,6 +20,7 @@ class CParser:
 
         self.functions.clear()
         self._traverse(tu.cursor)
+        print(f"Parsing{c_file_path} finished, {len(self.functions)} functions found.")
         return self.functions
 
     def _traverse(self, cursor: cl.Cursor):
@@ -60,7 +57,6 @@ class CParser:
         extent = cursor.extent
         start: cl.SourceLocation = extent.start
         end: cl.SourceLocation = extent.end
-        source_code = ""
         with open(start.file.name, encoding="utf-8") as f:
             content =  f.readlines()
             for line in range(start.line-1, end.line):

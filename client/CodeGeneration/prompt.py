@@ -43,6 +43,7 @@ code_gen_instruct = ChatPromptBase(
     @CODE_RULE5: 直接输出代码生成结果。
     @CODE_RULE6: 如果我的需求中包含伪代码，自行解析伪代码的逻辑并为我生成代码。
     @CODE_RULE7: 如果我的需求中包含多个需求，请帮我对需求进行拆分并为我生成代码。
+    @CODE_RULE8: 如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这条规则.
     """,
     user = """这是代码生成对话历史(可能没有)。
     @HISTORY:{history}

@@ -2,6 +2,7 @@ import os
 import json
 from datetime import datetime
 import shutil
+from copy import deepcopy
 
 import pandas as pd
 from fastapi import FastAPI
@@ -9,7 +10,6 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import uvicorn
 import clang.cindex as cl
-
 
 from client.CodeBaseBuild.build_codebase import get_repository,repo_parse_multy,sum_tokenize,gen_sum_multy,repo_parse_single,gen_sum_multy
 from client.CodeSearch.code_search import code_search_custom
@@ -177,6 +177,7 @@ def generate(request: GenerateRequest):
     i = 0
     prompt = code_check
     err_info = ''
+    code_raw = deepcopy(code)
     while i < itea:
         if  (not '```c' in code) and (not '```C' in code):
             print(f'--------------无法进行代码审查，代码生成格式不满足要求-------\n{code}')
@@ -194,7 +195,9 @@ def generate(request: GenerateRequest):
                 break
             if 'error' in err_list[0].keys():
                 print(f'--------------无法进行代码审查，代码生成出现错误 -------\n{str(err_list)}')
+                code = code_raw
                 break
+            code_raw = deepcopy(code)
             err_info = err_parse(err_list)
             if i == 0:
                 prompt.generate_prompt(user_param={'code':code, 'error':err_info})

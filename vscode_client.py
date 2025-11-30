@@ -162,11 +162,9 @@ def generate(request: GenerateRequest):
     model = config['llm']['model']
     key = config['llm']['key']
     code = generate_api(messages, host=host, model=model, key=key)
-    if '```c' in code:
-        code = code.split('```c')[-1].split('```')[0]
-    elif '```C' in code:
-        code = code.split('```C')[-1].split('```')[0]
-    else:
+    code = code.split('</think>')[-1]
+
+    if  (not '```c' in code) and (not '```C' in code):
         messages[-1]['content'] += '如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这句话'
         code = generate_api(messages, host=host, model=model, key=key)
     print(f'********** 完成生成 {datetime.now()} **********')
@@ -183,10 +181,20 @@ def generate(request: GenerateRequest):
         if  (not '```c' in code) and (not '```C' in code):
             print(f'--------------无法进行代码审查，代码生成格式不满足要求-------\n{code}')
             break
+        if '```c' in code:
+            code = code.split('```c')[-1].split('```')[0]
+        elif '```C' in code:
+            code = code.split('```C')[-1].split('```')[0]
         analyzer = SnippetAnalyzer()
         result_str = analyzer.analyze(code)
         if len(result_str.strip()) > 0:
             err_list = json.loads(result_str)
+            if len(err_list) == 0:
+                print(f'--------------代码审查通过-------\n{str(err_list)}')
+                break
+            if 'error' in err_list[0].keys():
+                print(f'--------------无法进行代码审查，代码生成出现错误 -------\n{str(err_list)}')
+                break
             err_info = err_parse(err_list)
             if i == 0:
                 prompt.generate_prompt(user_param={'code':code, 'error':err_info})
@@ -195,13 +203,11 @@ def generate(request: GenerateRequest):
                 messages = prompt.add_chat('assistant', code)
                 messages = prompt.add_chat('user', prompt.user_prompt_template.invoke({'code':code, 'error':err_info}).text)
             code = generate_api(messages, host=host, model=model, key=key)
-            if '```c' in code:
-                code = code.split('```c')[-1].split('```')[0]
-            elif '```C' in code:
-                code = code.split('```C')[-1].split('```')[0]
-            else:
+            code = code.split('</think>')[-1]
+            if  (not '```c' in code) and (not '```C' in code):
                 messages[-1]['content'] += '如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这句话'
                 code = generate_api(messages, host=host, model=model, key=key)
+                code = code.split('</think>')[-1]
             i+=1
         else:
             break

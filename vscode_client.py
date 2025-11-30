@@ -17,6 +17,9 @@ from client.CodeGeneration.generation import generate_api
 from client.CodeGeneration.prompt import code_gen_instruct
 from client.CodeGeneration.content_process import history_content
 from client.CodeSearch.code_search import NlRetriever
+from client.CodeCheck.analysis_snippet.analysis_snippet import SnippetAnalyzer
+from client.CodeCheck.prompt import code_check
+from client.CodeCheck.content_process import err_parse
 
 app = FastAPI(title="Code Generation Server", version="1.0.0")
 
@@ -146,7 +149,7 @@ def generate(request: GenerateRequest):
     param_list = []
     result_list = []
     messages = prompt_templete.generate_message()
-    for index,example in examples.iterrows():
+    for count,example in examples.iterrows():
         if float(example['bm25_score']) > 0:
             param_list.append({'requirement': example['summary']})
             result_list.append(example['source_code'])
@@ -159,11 +162,49 @@ def generate(request: GenerateRequest):
     model = config['llm']['model']
     key = config['llm']['key']
     code = generate_api(messages, host=host, model=model, key=key)
-
+    if '```c' in code:
+        code = code.split('```c')[-1].split('```')[0]
+    elif '```C' in code:
+        code = code.split('```C')[-1].split('```')[0]
+    else:
+        messages[-1]['content'] += '如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这句话'
+        code = generate_api(messages, host=host, model=model, key=key)
     print(f'********** 完成生成 {datetime.now()} **********')
+    print(f'********** 迭代次数:{count} **********')
     print(f'--------------提示词-------\n{messages}')
     print(f'--------------生成结果-------\n{code}')
-
+    
+    print(f'********** 开始代码审查 {datetime.now()} **********')
+    itea = config['CodeCheck']['itea']
+    i = 0
+    prompt = code_check
+    err_info = ''
+    while i < itea:
+        if  (not '```c' in code) and (not '```C' in code):
+            print(f'--------------无法进行代码审查，代码生成格式不满足要求-------\n{code}')
+            break
+        analyzer = SnippetAnalyzer()
+        result_str = analyzer.analyze(code)
+        if len(result_str.strip()) > 0:
+            err_list = json.loads(result_str)
+            err_info = err_parse(err_list)
+            if i == 0:
+                prompt.generate_prompt(user_param={'code':code, 'error':err_info})
+                messages = prompt.generate_message()
+            else: 
+                messages = prompt.add_chat('assistant', code)
+                messages = prompt.add_chat('user', prompt.user_prompt_template.invoke({'code':code, 'error':err_info}).text)
+            code = generate_api(messages, host=host, model=model, key=key)
+            if '```c' in code:
+                code = code.split('```c')[-1].split('```')[0]
+            elif '```C' in code:
+                code = code.split('```C')[-1].split('```')[0]
+            else:
+                messages[-1]['content'] += '如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这句话'
+                code = generate_api(messages, host=host, model=model, key=key)
+            i+=1
+        else:
+            break
     return {"code":code}
 
 

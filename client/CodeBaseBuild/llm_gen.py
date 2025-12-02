@@ -1,5 +1,5 @@
 from openai import OpenAI
-def generate_api(messages, host='http://10.13.1.102:8021/v1', model = 'deepseek-ai/DeepSeek-R1', key='103', top_p=0.9, temperature=0.6, stream=False):
+def generate_api(messages, host='http://10.13.1.102:8021/v1', model = 'deepseek-ai/DeepSeek-R1', key='103', top_p=0.9, temperature=0.6, stream=False, timeout=30):
     
     client = OpenAI(base_url=host,api_key=key)
     result = client.chat.completions.create(
@@ -11,6 +11,7 @@ def generate_api(messages, host='http://10.13.1.102:8021/v1', model = 'deepseek-
             extra_body={
                 "enable_enhancement": True,
             },
+            timeout=timeout
         )
     return result.choices[0].message.content
 

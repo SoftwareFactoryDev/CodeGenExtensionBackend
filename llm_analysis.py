@@ -31,7 +31,7 @@ def generation():
                 start_time = time.time()
                 try:
                     # 设置超时时间为30秒
-                    response = generate_api(messages, host='http://10.13.1.104:14516/v1/', timeout=120)
+                    response = generate_api(messages, host='http://10.13.1.104:14516/v1/', timeout=600)
                     response = response.split('</think>')[-1]
                 except requests.exceptions.Timeout:
                     response_time = time.time() - start_time

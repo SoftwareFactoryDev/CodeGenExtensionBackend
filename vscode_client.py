@@ -152,21 +152,24 @@ def generate(request: GenerateRequest):
     examples = code_search_custom(retriever=retriever, key_words=request.prompt, top_K=k, codebase_path=codebase_path, columns = config['CodeSearch']['columns'])
     param_list = []
     result_list = []
+    ret_info = ''
     messages = prompt_templete.generate_message()
     for count,example in examples.iterrows():
         if float(example['bm25_score']) > 0:
             param_list.append({'requirement': example['summary']})
             result_list.append(example['source_code'])
+            ret_info += f'代码片段{count+1}: 来自代码库{example["repo_name"]} \n\t【摘要】 {example["summary"]}\n\t 【签名】\n\t{example["signature"]}\n'
     if len(result_list) > 0:
         messages = prompt_templete.add_example(param_list, result_list)    
     print(f'********** 完成检索  **********')
-    print(f'检索结果: {result_list}')
+    print(f'检索结果: {ret_info}')
 
     try:
         # code generation
         host = config['llm']['url']
         model = config['llm']['model']
         key = config['llm']['key']
+        print(f'--------------提示词-------\n{messages}')
         code = generate_api(messages, host=host, model=model, key=key)
         code = code.split('</think>')[-1]
 
@@ -175,7 +178,6 @@ def generate(request: GenerateRequest):
             code = generate_api(messages, host=host, model=model, key=key)
         print(f'********** 完成生成 {datetime.now()} **********')
         print(f'********** 迭代次数:{count} **********')
-        print(f'--------------提示词-------\n{messages}')
         print(f'--------------生成结果-------\n{code}')
         
         print(f'********** 开始代码审查 {datetime.now()} **********')
@@ -231,12 +233,6 @@ def generate(request: GenerateRequest):
             response = response.replace(codes[index], snippet)
     except APITimeoutError:
         return {"code":"服务器繁忙，请稍后再试"} 
-        
-    except APIConnectionError:
-        return {"code":"大模型连接错误，请联系管理员处理"} 
-        
-    except Exception as e:
-        return {"code":"服务错误，请联系管理员处理"} 
     return {"code":response.strip()}
 
 

@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 
-os.environ['CUDA_VISIBLE_DEVICES'] = "1,0"
+os.environ['CUDA_VISIBLE_DEVICES'] = "2,3"
 MODEL_PATH = "/data/zhouzl/code/Model/DeepseekR1-32B"
 DEVICE = "cuda"
 MAX_NEW_TOKENS = 40960000

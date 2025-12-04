@@ -1,3 +1,5 @@
+import re
+
 def history_content(history):
     content = ''
     for record in history[-3:]:
@@ -9,3 +11,11 @@ def req_list_content(req_list):
     for req in req_list:
         content += f"* {req['ID']} : {req['Content']}\n"
     return content
+
+def code_parse(string):
+
+    # 使用正则表达式匹配代码块，同时支持```c和```C
+    pattern = r'```[cC]\n(.*?)\n```'
+    matches = re.findall(pattern, string, re.DOTALL)
+    
+    return matches

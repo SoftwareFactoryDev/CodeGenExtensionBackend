@@ -20,7 +20,7 @@ from client.CodeGeneration.content_process import code_parse
 from client.CodeSearch.code_search import NlRetriever
 from client.CodeCheck.analysis_snippet.analysis_snippet import SnippetAnalyzer
 from client.CodeCheck.prompt import code_check
-from client.CodeCheck.content_process import err_parse
+from client.CodeCheck.content_process import err_parse, compare_code
 from openai import APITimeoutError, APIError, APIConnectionError
 
 app = FastAPI(title="Code Generation Server", version="1.0.0")
@@ -184,12 +184,14 @@ def generate(request: GenerateRequest):
         itea = config['CodeCheck']['itea']
         i = 0
         prompt = code_check
-        err_info = ''
         if  (not '```c' in code) and (not '```C' in code):
             print(f'--------------无法进行代码审查，代码生成格式不满足要求-------\n{code}')
             return {"code":code}
         response = deepcopy(code)
+        raw_res = deepcopy(code)
         codes = code_parse(code)
+        fix_info = ''
+        fixed = False
         print(f'--------------代码片段总数:{len(codes)}-------\n')
         for index, snippet in enumerate(codes):
             code_raw = deepcopy(snippet)
@@ -201,12 +203,14 @@ def generate(request: GenerateRequest):
                     err_list = json.loads(result_str)
                     if len(err_list) == 0:
                         print(f'--------------第{index+1}个代码片段审查通过，轮次为：{i+1}-------')
+                        fixed = True
                         break
-                    if 'error' in err_list[0].keys():
-                        print(f'--------------第{index+1}个代码片段审查第{i+1}轮次生成出现问题 -------\n{str(err_list)}')
-                        snippet = code_raw
+                    # if 'error' in err_list[0].keys():
+                    #     snippet = code_raw
+                    #     err_info = err_list[0]
+                    else:
+                        err_info = err_parse(err_list)
                     code_raw = deepcopy(snippet)
-                    err_info = err_parse(err_list)
                     print(f'--------------第{index+1}个代码 第{i+1}轮审查意见 -------\n{err_info}')
                     if i == 0:
                         prompt.generate_prompt(user_param={'code':snippet, 'error':err_info})
@@ -233,6 +237,28 @@ def generate(request: GenerateRequest):
             response = response.replace(codes[index], snippet)
     except APITimeoutError:
         return {"code":"服务器繁忙，请稍后再试"} 
+    
+
+    response = response.strip()+'\n'
+    if len(ret_info.strip()) > 0:
+        ret_info = f'=============【当前代码生成使用以下资源】============ \n{ret_info}'
+    else:
+        ret_info = '=============【当前代码库中暂无可用案例】============ \n'
+    fix_info = ''
+    new_codes = code_parse(response)
+    if len(new_codes) == len(codes):
+        for index, new in enumerate(new_codes):
+            old = codes[index]
+            if new != old:
+                fix_info += f'第{index+1}个代码片段被修改\n'
+                str = compare_code(old, new)
+                fix_info += str
+    if fixed:
+        fix_info = '=============【当前代码通过GJB8114代码审查】============ \n'+fix_info
+    else:
+        fix_info = '=============【当前代码已针对GJB8114进行审查】============\n'+fix_info
+    response = response + ret_info + fix_info
+    print(f'最终回复为：{response.strip()}')
     return {"code":response.strip()}
 
 

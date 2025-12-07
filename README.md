@@ -18,7 +18,8 @@ pip install -r requirements.txt
 
 2. 部署代码审查工具
 
-从链接: https://pan.baidu.com/s/14JFohl-MJKBrG0-a_gzN8A?pwd=sibt 提取码: sibt  下载 analyzer.tar.gz 文件，并放到 ./client/CodeCheck 目录下，然后执行如下命令：
+从[链接](https://pan.baidu.com/s/14JFohl-MJKBrG0-a_gzN8A?pwd=sibt) 提取码: sibt
+下载 analyzer.tar.gz 文件，并放到 ./client/CodeCheck 目录下，然后执行如下命令：
 
 ```bash
 cd ./client/CodeCheck

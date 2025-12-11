@@ -67,8 +67,6 @@ async def repo_parse_multy(repo_path, lib_path, output_path, version, max_worker
         df = pd.DataFrame(all_functions)
         df.to_csv(output_path, index=False, encoding='utf-8-sig')
         result = f'代码库{os.path.basename(repo_path)}_{version}解析完成。'
-    
-    rm_repo(repo_path)
     return result
 
 def repo_parse_single(repo_path, lib_path, output_path, version):
@@ -83,7 +81,7 @@ def repo_parse_single(repo_path, lib_path, output_path, version):
         all_functions = []
 
         for index, c_file in enumerate((c_files + h_files)):
-            print(f'processing{index+1}/{len((c_files + h_files))}:{c_file}')
+            print(f'processing File No{index+1}:{c_file}')
             try:
                 c_parser.parse_file(c_file)
                 for func in c_parser.functions:
@@ -94,10 +92,9 @@ def repo_parse_single(repo_path, lib_path, output_path, version):
         df = pd.DataFrame(all_functions)
         df.to_csv(output_path, index=False, encoding='utf-8-sig')
         result = f'代码库{os.path.basename(repo_path)}_{version}解析完成。'
-    rm_repo(repo_path)
     return result
 
-def gen_sum_multy(codebase_path):
+def gen_sum_single(codebase_path):
 
     prompt_template = function_sum_template
 
@@ -110,7 +107,7 @@ def gen_sum_multy(codebase_path):
         return f'代码库{os.path.basename(codebase_path)}为空，跳过摘要生成步骤。'
 
     for index, row in codebase.iterrows():
-        print(f'processing{index+1}/{len((codebase))}:{row["signature"]}')
+        print(f'processing Function No.{index+1}:{row["signature"]}')
         if (row['summary'] is not None) and (row['summary'] != "Not Generated") and (len(row['summary']) < 300):
             continue
         param = {'name': row['name'], 'file_path': row['file_path'], 'source_code': row['source_code'], 'signature': row['signature']}
@@ -168,7 +165,7 @@ def process_single_row(args):
     index, row, codebase_path = args
     prompt_template = get_prompt_template()
     
-    print(f'processing {index+1}/{len(row)}: {row["signature"]}')
+    print(f'processing Function No.{index+1}: {row["signature"]}')
     
     # 检查是否需要生成摘要
     if (row['summary'] is not None) and (row['summary'] != "Not Generated") and (len(row['summary']) < 300):
@@ -240,7 +237,6 @@ async def gen_sum_multy(codebase_path, max_workers=4):
     
     if len(codebase) == 0:
         return f'代码库{os.path.basename(codebase_path)}为空，跳过摘要生成步骤。'
-
     tasks = [(index, row, codebase_path) for index, row in codebase.iterrows()]
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -251,7 +247,7 @@ async def gen_sum_multy(codebase_path, max_workers=4):
             try:
                 row_index, summary = future.result()
                 codebase.at[row_index, 'summary'] = summary
-                print(f'已完成处理: {row_index+1}/{len(codebase)}')
+                print(f'已完成处理: Function No.{row_index+1}')
             except Exception as exc:
                 print(f'处理第 {index} 行时发生异常: {exc}')
                 codebase.at[index, 'summary'] = "处理失败."

@@ -2,7 +2,7 @@
     "codeBaseBuild":{
         "repoPath":"./repo",
         "codebasePath":"./data",
-        "clang_Path":"D:/Environment/Development/Clang/install/LLVM/bin/libclang.dll",
+        "clang_Path":"/data/zhouzl/packages/LLVM/llvm-project/build/lib/libclang.so",
         "stopword_path":"./client/停用词表.txt",
         "max_workers":4
     },

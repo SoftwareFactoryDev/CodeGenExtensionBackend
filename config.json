@@ -1,0 +1,6 @@
+{
+    "CodeEmbedding":{
+        "modelPath": "/data/zhouzl/code/Model/unixcoder-base",
+        "cuda_visible_devices": "0"
+    }
+}

@@ -2,17 +2,16 @@
     "codeBaseBuild":{
         "repoPath":"./repo",
         "codebasePath":"./data",
-        "clang_Path":"/data/zhouzl/packages/LLVM/llvm-project/build/lib/libclang.so",
-        "stopword_path":"./client/停用词表.txt",
+        "clangPath":"/data/zhouzl/packages/LLVM/llvm-project/build/lib/libclang.so",
+        "stopwordPath":"./client/停用词表.txt",
         "max_workers":4
     },
     "CodeGeneration":{
-        "topk":3
+        "itea":5
     },
     "CodeSearch":{
         "llama_index_path":"./llama_index",
-        "topk":3,
-        "columns":["name","return_type","signature","params","summary","source_code","extent","file_path","sum_tokenize"],
+        "columns":["name","return_type","signature","params","summary","source_code","extent","file_path","module","repo_name","sum_tokenize","sum_embedding"],
         "num_workers": 4
     },
     "CodeCheck":{
@@ -22,5 +21,8 @@
         "url":"http://10.13.1.102:8021/v1",
         "model":"deepseek-ai/DeepSeek-R1",
         "key":"103"
+    },
+    "nlp_emb":{
+        "url":"http://127.0.0.1:14515/embeddings"
     }
 }

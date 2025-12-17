@@ -1,13 +1,13 @@
-timestamp=$(date +"%Y-%m-%d_%H-%M-%S")
-log_file="./logs/${timestamp}.txt"
+mkdir -p logs
 
-echo "程序启动时间: $timestamp" > "$log_file"
+LOG_FILE="logs/$(date '+%Y-%m-%d_%H-%M-%S')_app.log"
 
-nohup python3 vscode_client.py >> "$log_file" 2>&1 &
+WORKERS=4
 
-pid=$!
+# 启动uvicorn服务器
+echo "Starting server with $WORKERS workers..."
+echo "Log file: $LOG_FILE"
 
-echo "进程ID: $pid" >> "$log_file"
+uvicorn app_run:app --host 0.0.0.0 --port 14514 --workers $WORKERS --log-level info --access-log > $LOG_FILE 2>&1 &
 
-echo "程序已在后台运行，进程ID: $pid"
-echo "日志文件: $log_file"
+echo "Server started with PID: $!"

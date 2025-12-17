@@ -9,7 +9,14 @@
             "name": "客户端运行",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/vscode_client.py"
+            "program": "${workspaceFolder}/app_run.py",
+            "args": ["--config", "./config.json"]
+        },
+        {
+            "name": "插件性能测试",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/test.py"
         }
     ]
 }

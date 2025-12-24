@@ -1,13 +1,17 @@
-import argparse
-import multiprocessing
+import os
+from copy import deepcopy
+from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import clang.cindex as cl
-from copy import deepcopy
+
+os.environ["LOG_FILE"] = os.path.join('logs', f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_service.txt")
+
+from app.logger import logger_global
 from app.config import config
 from app.routes import router
-from app.logger import logger_global
+
 def create_app(config_path: str = './config.json'):
     logger = deepcopy(logger_global)
     config.set_path(config_path)
@@ -36,5 +40,5 @@ def create_app(config_path: str = './config.json'):
 # 创建应用实例
 app = create_app()
 
-# if __name__ == '__main__':
-#     uvicorn.run(app, host='0.0.0.0', port=14514)
+if __name__ == '__main__':
+    uvicorn.run(app, host='0.0.0.0', port=14514)

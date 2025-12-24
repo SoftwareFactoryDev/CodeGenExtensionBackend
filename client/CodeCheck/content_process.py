@@ -2,51 +2,36 @@ import difflib
 def err_parse(err_list):
     err_info = ''
     for index,err in enumerate(err_list):
+        if isinstance(err, str):
+            err_info += f'{index+1}, {err}\n'
         if 'error' in err.keys():
             err_info += f'{index+1}, 存在编译错误：{err}\n'
         else:
             err_info += f'{index+1}, 异常位置:{err["location"]},语句内容：{err["violated_code"]}，错误信息:{err["description"]}\n'
     return err_info
 
-def compare_code(old_code, new_code):
+def compare_code(before: str, after: str) -> str:
 
-    fix_info = ''
-    old_lines = old_code.splitlines()
-    new_lines = new_code.splitlines()
+    b_lines = before.splitlines()
+    a_lines = after.splitlines()
 
-    differ = difflib.Differ()
-    diff = list(differ.compare(old_lines, new_lines))
+    sm = difflib.SequenceMatcher(None, b_lines, a_lines)
+    info = []
 
-    pending_delete = None
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == 'equal':
+            continue
+        elif tag == 'delete':
+            for row in range(i1 + 1, i2 + 1):
+                info.append({"code": "before", "type": "delete", "loc": row})
+        elif tag == 'insert':
+            for row in range(j1 + 1, j2 + 1):
+                info.append({"code": "after", "type": "new", "loc": row})
+        elif tag == 'replace':
+            for row in range(i1 + 1, i2 + 1):
+                info.append({"code": "before", "type": "edit", "loc": row})
+            for row in range(j1 + 1, j2 + 1):
+                info.append({"code": "after", "type": "edit", "loc": row})
 
-    for line in diff:
-        if line.startswith('- '):
-            if pending_delete is not None:
-                content = {pending_delete[2:].strip()}
-                if len(content) > 0:
-                    fix_info += f"\t[删除] {content}\n"
-            pending_delete = line
-        elif line.startswith('+ '):
-            if pending_delete is not None:
-                content1 = {pending_delete[2:].strip()}
-                content2 = {line[2:].strip()}
-                if len(content1) > 0 and len(content2) > 0:
-                    fix_info += f"\t[更改] {pending_delete[2:].strip()}->{line[2:].strip()}\n"
-                if len(content1) > 0 and len(content2) == 0:
-                    fix_info += f"\t[删除] {pending_delete[2:].strip()}\n"
-                if len(content1) == 0 and len(content2) > 0:
-                    fix_info += f"\t[新增] {line[2:]}\n"
-                pending_delete = None
-            else:
-                if len(line[2:].strip()) > 0:
-                    fix_info += f"\t[新增] {line[2:]}\n"
-        elif line.startswith('  '):
-            if pending_delete is not None:
-                if len(pending_delete[2:].strip()) > 0:
-                    fix_info += f"\t[删除] {pending_delete[2:].strip()}\n"
-                pending_delete = None
-    if pending_delete is not None:
-        if len(pending_delete[2:].strip()) > 0:
-            fix_info += f"\t[删除] {pending_delete[2:].strip()}\n"
+    return {"info":info}
     
-    return fix_info

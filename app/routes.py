@@ -132,7 +132,7 @@ async def search_assets(
         result_list.append(deepcopy(result_item))
     logger.info(f"=== 检索结果 ===")
     logger.info(reslut_info)
-    logger.info(f"********** 完成检索 **********")
+    logger.info(f"********** 【{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}】完成检索 **********")
     return {"result": result_list}
 
 build_lock = Lock()
@@ -211,7 +211,7 @@ async def import_repository(
             )
         logger.info(f"=== {result} ===")
 
-        logger.info(f"=== 函数级资产摘要预分词 ===")
+        logger.info(f"=== 【{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}】函数级资产摘要预分词 ===")
         if max_workers <= 1:
             result = code_sum_tokenize_single(
                 asset_path=asset_path, stopword_path=stopword_path
@@ -253,6 +253,7 @@ async def import_repository(
         build_lock.release()
         is_building = False
         rm_repo(repo_path)
+    logger.info(f"=== 代码库构建完成: {os.path.basename(repo_path)}, 提交版本：{version}, 系统概述：{info['description']},模块数量：{len(info['modules'])},总共解析函数数目: {len(codebase)}===")
     return {
         "message": f"代码库构建完成: {os.path.basename(repo_path)}, 提交版本：{version}, 系统概述：{info['description']},模块数量：{len(info['modules'])},总共解析函数数目: {len(codebase)}"
     }
@@ -330,7 +331,7 @@ async def generate_code_with_edit(
     messages = prompt_templete.generate_message()
     logger.info(f"=== 完成提示词加载 ===")
     logger.info(messages)
-
+    
     try:
         # code generation
         host = settings.get("llm", {}).get("url")
@@ -396,6 +397,14 @@ async def review_code(
         result_str = analyzer.analyze(snippet)
         if len(result_str.strip()) > 0:
             err_list = json.loads(result_str)
+            if isinstance(err_list, dict):
+                if 'error' in err_list.keys():
+                    err_info = str(err_list['error'])
+                    if err_info.lower().strip().split(' ','') == 'emptycode':
+                        snippet = code_raw
+                        continue
+                else:
+                    err_info = str(err_list)
             if len(err_list) == 0:
                 break
             else:
@@ -429,6 +438,7 @@ async def review_code(
             break
     snippet = snippet.strip()
     compare = compare_code(raw_res, snippet)
+    print(f"=== 审查后代码 === \n {snippet}")
     logger.info(f"********** 完成代码审查 **********")
     return {"result": snippet, "info": compare["info"]}
 
@@ -481,6 +491,7 @@ async def store_asset(
             return {"message": f"服务器正在处理其他代码资产，请稍后再试"}
 
         os.makedirs(repo_path, exist_ok=True)
+        os.makedirs(os.path.dirname(os.path.join(repo_path, file_path)))
         with open(os.path.join(repo_path, file_path), "w") as f:
             f.write(code)
         logger.info(f"=== 模拟代码库构建完成 ===")

@@ -1,0 +1,78 @@
+[
+    {
+        "ID": "FMS-REQ-401",
+        "Content": "应为导航管理组件建立概念数据模型，包含以下实体：\n• 嵌入式全球定位系统/惯性导航系统（EGI）\n• 惯性测量单元（IMU）\n• 导航管理功能（NavManagementFunction）"
+    },
+    {
+        "ID": "FMS-REQ-402",
+        "Content": "每个实体应具备唯一标识（UniqueIdentifier）。"
+    },
+    {
+        "ID": "FMS-REQ-403",
+        "Content": "EGI实体应具备位置（Position）和方向（Orientation）可观察量。"
+    },
+    {
+        "ID": "FMS-REQ-404",
+        "Content": "IMU实体应引用位置（Position）可观察量。"
+    },
+    {
+        "ID": "FMS-REQ-405",
+        "Content": "NavManagementFunction实体应引用位置（Position）和方向（Orientation）可观察量。"
+    },
+    {
+        "ID": "FMS-REQ-406",
+        "Content": "概念模型中的可观察值应细化为逻辑数据可测量，如方向（Orientation）细化为BodyFrameAttitudeMeasure。"
+    },
+    {
+        "ID": "FMS-REQ-407",
+        "Content": "平台数据模型应支持物理数据类型直接对应于IDL数据类型。"
+    },
+    {
+        "ID": "FMS-REQ-408",
+        "Content": "逻辑实体应进一步实现为平台实体，并投影到具体的消息类型上。"
+    },
+    {
+        "ID": "FMS-REQ-409",
+        "Content": "应为特定平台组件（如NavigationManager）的所有端口及其消息类型建立对应的数据模型。"
+    },
+    {
+        "ID": "FMS-REQ-501",
+        "Content": "应为每个与外部设备直接交互的组件创建I/O服务配置文件。"
+    },
+    {
+        "ID": "FMS-REQ-502",
+        "Content": "雷达组件、定位组件、导航组件、惯性测量组件应各配置一个I/O连接。"
+    },
+    {
+        "ID": "FMS-REQ-503",
+        "Content": "定位组件应以队列端口方式从外部设备EGI1获取数据，传输总线类型为MIL_STD_1553。"
+    },
+    {
+        "ID": "FMS-REQ-504",
+        "Content": "应为每个系统组件创建传输服务配置文件。"
+    },
+    {
+        "ID": "FMS-REQ-505",
+        "Content": "定位组件、导航组件、惯性测量组件应各配置1个传输连接。"
+    },
+    {
+        "ID": "FMS-REQ-506",
+        "Content": "导航管理组件应配置4个传输连接。"
+    },
+    {
+        "ID": "FMS-REQ-507",
+        "Content": "雷达组件应配置4个传输连接。"
+    },
+    {
+        "ID": "FMS-REQ-508",
+        "Content": "战术状态管理组件应配置2个传输连接。"
+    },
+    {
+        "ID": "FMS-REQ-509",
+        "Content": "战术显示组件应配置2个传输连接。"
+    },
+    {
+        "ID": "FMS-REQ-510",
+        "Content": "定位组件向导航管理组件传输数据应使用POSIX Socket与IPv4网络协议。"
+    }
+]

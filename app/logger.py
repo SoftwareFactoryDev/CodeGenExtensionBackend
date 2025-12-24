@@ -7,8 +7,7 @@ def setup_logger(name='app'):
 
     os.makedirs('logs', exist_ok=True)
     
-    current_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    log_file = os.path.join('logs', f'{current_time}_service.txt')
+    log_file = os.environ['LOG_FILE']
     
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)

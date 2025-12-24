@@ -1,0 +1,41 @@
+FMS-REQ-401
+应为导航管理组件建立概念数据模型，包含以下实体：
+• 嵌入式全球定位系统/惯性导航系统（EGI）
+• 惯性测量单元（IMU）
+• 导航管理功能（NavManagementFunction）
+FMS-REQ-402
+每个实体应具备唯一标识（UniqueIdentifier）。
+FMS-REQ-403
+EGI实体应具备位置（Position）和方向（Orientation）可观察量。
+FMS-REQ-404
+IMU实体应引用位置（Position）可观察量。
+FMS-REQ-405
+NavManagementFunction实体应引用位置（Position）和方向（Orientation）可观察量。
+FMS-REQ-406
+概念模型中的可观察值应细化为逻辑数据可测量，如方向（Orientation）细化为BodyFrameAttitudeMeasure。
+FMS-REQ-407
+平台数据模型应支持物理数据类型直接对应于IDL数据类型。
+FMS-REQ-408
+逻辑实体应进一步实现为平台实体，并投影到具体的消息类型上。
+FMS-REQ-409
+应为特定平台组件（如NavigationManager）的所有端口及其消息类型建立对应的数据模型。
+FMS-REQ-501
+应为每个与外部设备直接交互的组件创建I/O服务配置文件。
+FMS-REQ-502
+雷达组件、定位组件、导航组件、惯性测量组件应各配置一个I/O连接。
+FMS-REQ-503
+定位组件应以队列端口方式从外部设备EGI1获取数据，传输总线类型为MIL_STD_1553。
+FMS-REQ-504
+应为每个系统组件创建传输服务配置文件。
+FMS-REQ-505
+定位组件、导航组件、惯性测量组件应各配置1个传输连接。
+FMS-REQ-506
+导航管理组件应配置4个传输连接。
+FMS-REQ-507
+雷达组件应配置4个传输连接。
+FMS-REQ-508
+战术状态管理组件应配置2个传输连接。
+FMS-REQ-509
+战术显示组件应配置2个传输连接。
+FMS-REQ-510
+定位组件向导航管理组件传输数据应使用POSIX Socket与IPv4网络协议。

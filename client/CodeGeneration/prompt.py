@@ -44,21 +44,42 @@ code_gen_instruct = ChatPromptBase(
     @CODE_RULE6: 如果我的需求中包含伪代码，自行解析伪代码的逻辑并为我生成代码。
     @CODE_RULE7: 如果我的需求中包含多个需求，请帮我对需求进行拆分并为我生成代码。
     @CODE_RULE8: 如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这条规则.
+    @CODE_RULE9:我可能会为你提供代码资产，这些资产是按照优先级由高到低排序的，请你仿照这些资产进行代码生成，并给我生成资产复用说明说明你对这些资产的参考情况.
+    @CODE_RULE10:生成结果的形式为Json格式：code:生成的代码，info:代码复用说明v.
+    @CODE_RULE11:Json数据使用```json ```包裹起来.
+    @CODE_RULE12:资产复用说明必须是一整段话，主要说明自己服用了哪个资产，该资产的签名和概述是什么，具体复用了什么内容。
     """,
-    user = """这是代码生成对话历史(可能没有)。
-    @HISTORY:{history}
+    user = """
+    这些是一些供你使用的代码资产,请你自行分析这些资产是否可以用：
+    @ASSETS:
+    {asset}
     这是我的需求，请根据它实现功能，该函数在遵守CODE_RULES的同时满足我的需求
     @REQUIREMENT:{requirement}
-    请你自行根据我给你发送的内容，判断你要做的事情。
+    请你自行根据我给你发送的内容，判断你要做的事情，请确保你生成的代码中对于资产复用的相关部分在形式上和资产保持最高相似度。资产复用说明必须是一整段话，主要说明自己服用了哪个资产，该资产的签名和概述是什么，具体复用了什么内容
     """,
-    example = """
-    这是我的需求，请根据它实现功能。
-    @REQUIREMENT:{requirement}，
-    该函数在遵守CODE_RULES的同时满足我的需求。
-""",
-    user_input_var=["requirement", "history"],
-    example_input_var=["requirement"]
+    user_input_var=["requirement", "asset"],
 )
+code_gen_history = ChatPromptBase(
+    system="""你是代码生成的专家助手。你的任务是实现一个完全满足用户需求的函数。在编写函数时，必须遵守CODE_RULES中的每条规则。
+@CODE_RULE1: 不要更改你需要生成的函数的函数签名。
+@CODE_RULE2: 确保你的代码实现时自包含的，它必须在不需要编写额外代码的情况下运行。
+@CODE_RULE3: 最好选择标准库使用，如果第三方库的使用是不可避免的，把它们列在最上面。
+@CODE_RULE4: 编写简洁、可读的**C语言**代码，但不要为了简洁而牺牲正确性。
+@CODE_RULE5: 直接输出代码生成结果。
+@CODE_RULE6: 如果我的需求中包含伪代码，自行解析伪代码的逻辑并为我生成代码。
+@CODE_RULE7: 如果我的需求中包含多个需求，请帮我对需求进行拆分并为我生成代码。
+    """,
+    user = """
+    这是代码生成对话历史(可能没有)。
+@HISTORY:{asset}
+这是我的需求，请根据它实现功能，该函数在遵守CODE_RULES的同时满足我的需求
+@REQUIREMENT:{requirement}
+请你自行根据我给你发送的内容，判断你要做的事情。
+
+    """,
+    user_input_var=["requirement", "asset"],
+)
+
 
 # code_gen_pseudocode = ChatPromptBase(
 
@@ -82,7 +103,7 @@ code_gen_instruct = ChatPromptBase(
 #     example_input_var=["pseudocode"]
 # )
 
-code_gen_retlist = ChatPromptBase(
+code_gen_reqlist = ChatPromptBase(
     system="""你是代码生成的专家助手。你的任务是实现根据我提供的多个规范字符串一次性生成多个函数的代码。在编写代码时，必须遵守CODE_RULES中的每条规则。
     @CODE_RULE1: 确保每个函数的代码实现都是自包含的，它们必须在不需要编写额外代码的情况下运行。
     @CODE_RULE2: 编写简洁、可读的C语言代码，但不要为了简洁而牺牲正确性。

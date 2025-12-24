@@ -1,6 +1,6 @@
 mkdir -p logs
 
-LOG_FILE="logs/$(date '+%Y-%m-%d_%H-%M-%S')_app.log"
+APP_LOG_FILE="logs/$(date '+%Y-%m-%d_%H-%M-%S')_app.log"
 
 WORKERS=4
 

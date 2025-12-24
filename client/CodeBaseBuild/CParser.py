@@ -1,7 +1,8 @@
+from copy import deepcopy
 import os
 import clang.cindex as cl
 from client.CodeBaseBuild.llm_gen import generate_api
-
+from app.logger import logger_global
 class CParser:
 
     def __init__(self):
@@ -11,6 +12,7 @@ class CParser:
 
     def parse_file(self, c_file_path):
 
+        logger = deepcopy(logger_global)
         self.file_path = c_file_path
         
         if not os.path.isfile(c_file_path):
@@ -20,9 +22,9 @@ class CParser:
 
         self.functions.clear()
         self._traverse(tu.cursor)
-        print(f"Parsing{c_file_path} finished, {len(self.functions)} functions found.")
+        logger.info(f"Parsing{c_file_path} finished, {len(self.functions)} functions found.")
         return self.functions
-
+    
     def _traverse(self, cursor: cl.Cursor):
         if cursor.kind.is_declaration() and cursor.kind == cl.CursorKind.FUNCTION_DECL:
             if not self._is_local_func(cursor):

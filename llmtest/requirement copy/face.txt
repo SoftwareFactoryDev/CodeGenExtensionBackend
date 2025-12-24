@@ -1,0 +1,60 @@
+COMM-REQ-001
+通信管理功能应能通过CDU接收控制信息（频率、频道、预设、密钥），并将通信信息显示在CDU上。
+COMM-REQ-002
+通信管理功能应能管理机载通信设备，包括UHF/VHF电台、数据传递设备（DTD）和CDU。
+COMM-REQ-003
+用户应能通过用户界面设备（如CDU）改变电台的频道、频率、预设和天线选择。
+COMM-REQ-004
+用户应能通过DTD加载或保存预设和配置文件。
+COMM-REQ-005
+系统应在单个处理器上运行于8个分区，使用通用配置集（General-Purpose Profile），支持ARINC 653与POSIX分区。
+COMM-REQ-006
+用户界面服务（UIS）应提供适宜的人机响应时间，无需严格的实时性要求。
+DIGMAP-REQ-001
+数字地图应用应能接收DTED数据与导航数据（高度、航向、空速、经纬度），并在CDS上显示数字地图图像。
+DIGMAP-REQ-002
+用户应能通过用户界面设备配置EGI、ADC、VOR/DME/ILS、TACAN、雷达高度计等设备。
+DIGMAP-REQ-003
+系统应在两个处理器上运行于11个分区，支持通用配置集或安全配置集，EGI与ILS应满足实时性要求。
+DIGMAP-REQ-004
+用户界面服务（UIS）应提供适宜的人机响应时间。
+RNP-REQ-001
+RNP管理器应能接收导航数据，提供飞行计划向量与导航告警至CDS与CDU。
+RNP-REQ-002
+用户应能通过用户界面设备配置EGI、ADC、VOR/DME/ILS、TACAN、雷达高度计等设备。
+RNP-REQ-003
+系统应在两个处理器上运行于13个分区，使用安全配置集（Safety Profile），飞行控制系统（FCS）应满足实时性要求。
+RNP-REQ-004
+RNP管理器应能向FCS管理器发送控制指令，控制飞机沿预定路径飞行。
+SEC-REQ-001
+安全状态报告系统应能将加密的状态日志信息存储至数据模块（Data Module）。
+SEC-REQ-002
+系统应在每个处理器上运行于两个分区，使用安全配置集（Security Profile）进行跨分区通信。
+SEC-REQ-003
+信息流控制策略组件应授权不同分区/设备间的消息流。
+SEC-REQ-004
+安全验证组件应确保消息在传输过程中未被篡改。
+INTF-REQ-001
+系统应支持ARINC 429总线连接CDU，使用ARINC 739协议。
+INTF-REQ-002
+系统应支持MIL-STD-1553总线连接UHF/VHF电台。
+INTF-REQ-003
+系统应支持以太网连接DTD。
+INTF-REQ-004
+系统应支持模拟与离散输入连接飞行员控制设备。
+DATA-REQ-001
+所有通过传输服务接口（TS Interface）传递的数据应使用FACE数据模型。
+DATA-REQ-002
+I/O服务应通过I/O接口向系统级健康监控组件（HMFM）报告健康状态。
+PERF-REQ-001
+用户界面服务（UIS）应保证人机交互响应时间 ≤ 200ms。
+PERF-REQ-002
+EGI、ILS、FCS等关键设备应满足实时性要求，响应时间 ≤ 50ms。
+PERF-REQ-003
+系统应支持多处理器、多分区并发执行，无死锁与资源冲突。
+SAFE-REQ-001
+系统应支持健康监控（PBIT/CBIT/IBIT）与故障检测。
+SAFE-REQ-002
+系统应支持跨分区的安全通信与加密存储。
+SAFE-REQ-003
+系统应支持双余度设备的数据同步与故障切换。

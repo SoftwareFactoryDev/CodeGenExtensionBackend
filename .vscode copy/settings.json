@@ -1,0 +1,4 @@
+{
+    "Codegeex.RepoIndex": true,
+    "python.analysis.exclude": ["/data/zhouzl/code/Code/SoftwareFactory/Client/client/CodeCheck/analysis_snippet","/data/zhouzl/code/Code/SoftwareFactory/Client/repo","/data/zhouzl/code/Code/SoftwareFactory/Client/data","/data/zhouzl/code/Code/SoftwareFactory/Client/doc","/data/zhouzl/code/Code/SoftwareFactory/Client/requirement/YFY"]
+}

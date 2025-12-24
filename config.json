@@ -12,7 +12,7 @@
     "CodeSearch":{
         "llama_index_path":"./llama_index",
         "columns":["name","return_type","signature","params","summary","source_code","extent","file_path","module","repo_name","sum_tokenize","sum_embedding"],
-        "num_workers": 4
+        "num_workers":1
     },
     "CodeCheck":{
         "itea": 5

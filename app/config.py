@@ -33,6 +33,8 @@ class Config:
                 logger.error(f"使用编码 {encode} 读取配置失败: {str(e)}")
                 raise
     
+    def set_clang(self, path):
+        self._data["codeBaseBuild"]["clangPath"] = path
     def set_path(self, file_path):
         """
         设置配置文件地址
@@ -45,6 +47,9 @@ class Config:
     def get(self) -> Dict[str, Any]:
         """获取配置"""
         return self._data
+    
+    def set_data(self, data):
+        self._data = data
 
 # 创建全局配置实例
 config = Config()

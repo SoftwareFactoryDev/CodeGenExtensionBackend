@@ -1,4 +1,4 @@
 {
     "Codegeex.RepoIndex": true,
-    "python.analysis.exclude": ["/data/zhouzl/code/Code/SoftwareFactory/Client/client/CodeCheck/analysis_snippet","/data/zhouzl/code/Code/SoftwareFactory/Client/repo","/data/zhouzl/code/Code/SoftwareFactory/Client/data","/data/zhouzl/code/Code/SoftwareFactory/Client/doc","/data/zhouzl/code/Code/SoftwareFactory/Client/requirement/YFY"]
+    "python.analysis.exclude": ["function/CodeCheck/analysis_snippet","function/CodeCheck/analysis_snippet/lib","function/repo","function/data","function/doc"]
 }

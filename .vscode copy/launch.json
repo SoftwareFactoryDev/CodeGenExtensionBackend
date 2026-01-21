@@ -3,20 +3,23 @@
     // 悬停以查看现有属性的描述。
     // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": [
-
+    "configurations": [  
         {
             "name": "客户端运行",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/app_run.py",
-            "args": ["--config", "./config.json"]
+            // "args": [
+            //     "--config",
+            //     "./config.json"
+            // ]
         },
         {
-            "name": "插件性能测试",
+            "name": "API接口测试",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test.py"
+            "program": "${workspaceFolder}/test_api.py",
+            "console": "integratedTerminal"
         }
     ]
 }

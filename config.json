@@ -2,9 +2,10 @@
     "codeBaseBuild":{
         "repoPath":"./repo",
         "codebasePath":"./data",
+        "tempCodebasePath":"./temp",
         "clangPath":"/data/zhouzl/packages/LLVM/llvm-project/build/lib/libclang.so",
-        "stopwordPath":"./client/停用词表.txt",
-        "max_workers":4
+        "stopwordPath":"./停用词表.txt",
+        "max_workers":1
     },
     "CodeGeneration":{
         "itea":5
@@ -12,15 +13,16 @@
     "CodeSearch":{
         "llama_index_path":"./llama_index",
         "columns":["name","return_type","signature","params","summary","source_code","extent","file_path","module","repo_name","sum_tokenize","sum_embedding"],
-        "num_workers":1
+        "num_workers":1,
+        "topk":10
     },
     "CodeCheck":{
         "itea": 5
     },
     "llm":{
-        "url":"http://10.13.1.102:8021/v1",
-        "model":"deepseek-ai/DeepSeek-R1",
-        "key":"103"
+    "url":"http://10.13.1.102:8021/v1",
+    "model":"deepseek-ai/DeepSeek-R1",
+    "key":"103"
     },
     "nlp_emb":{
         "url":"http://127.0.0.1:14515/embeddings"

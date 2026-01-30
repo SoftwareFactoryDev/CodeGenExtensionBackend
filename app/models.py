@@ -2,11 +2,12 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 
-class ImportRepoRequest(BaseModel):
+class RepoParseRequest(BaseModel):
+    lib: str
     repo_url: str
+    mask_dir: list[str]
 
-
-class ImportRepoResponse(BaseModel):
+class RepoParseResponse(BaseModel):
     message: str
 
 
@@ -148,8 +149,14 @@ class ErrorInfo(BaseModel):
     col: int
 
 
+"""/review 接口数据格式"""
+
+
 class ReviewRequest(BaseModel):
-    code: str
+    file: str
+    support: List[str]
+    start: int
+    end : int
 
 
 class ReviewResponse(BaseModel):
@@ -157,6 +164,7 @@ class ReviewResponse(BaseModel):
     err: List[ErrorInfo]
 
 
+# /fix 接口数据格式
 class FixInfo(BaseModel):
     code: str
     type: str
@@ -173,6 +181,34 @@ class FixResponse(BaseModel):
     type: str
     err: List[ErrorInfo]
     result: str
-    info: List[FixInfo]
+    # info: List[FixInfo]
+
+
+# /config 接口数据格式
 class ConfigRequest(BaseModel):
     info: str
+
+
+# /toollist 接口数据格式
+
+class ToolInfo(BaseModel):
+    name:str
+    type:str
+    endpoint:str
+
+class ToolListResponse(BaseModel):
+    tools: List[ToolInfo]
+
+
+# /toolsupport 接口数据格式
+
+class ToolSupportRequest(BaseModel):
+    tool: str
+
+class ToolParamInfo(BaseModel):
+    name:str
+    description:str
+
+class ToolSupportResponse(BaseModel):
+    supports: List[str]
+    params: List[ToolParamInfo]

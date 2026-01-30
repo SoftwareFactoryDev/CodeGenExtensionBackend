@@ -1,5 +1,5 @@
 import re
-
+import zipfile
 import os
 from typing import Dict, Any
 from datetime import datetime
@@ -9,13 +9,13 @@ import json
 import uuid
 
 import jieba
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form
 import pandas as pd
 from openai import APITimeoutError
 
 from app.models import (
-    ImportRepoRequest,
-    ImportRepoResponse,
+    RepoParseRequest,
+    RepoParseResponse,
     Asset,
     TempAsset,
     SearchRequest,
@@ -44,13 +44,14 @@ from app.models import (
     StoreResponse,
     FixRequest,
     FixResponse,
-    FixInfo,
-    ErrorInfo,
-    ConfigRequest
+    ConfigRequest,
+    ToolListResponse,
+    ToolSupportRequest,
+    ToolSupportResponse,
 )
 from app.config import config
 from app.util import temp_asset_from_df, process_temp_asset, asset_from_df
-from function.CodeGeneration.content_process import requirement_extract
+from function.CodeGeneration.util import requirement_extract
 from function.CodeBaseBuild.build_codebase import get_repository
 from function.CodeSearch.code_search import code_search_custom
 from function.CodeSearch.code_search import NlRetriever
@@ -68,20 +69,25 @@ from function.CodeBaseBuild.build_codebase import gen_module_sum_multy
 from function.CodeBaseBuild.build_codebase import gen_module_sum_single
 from function.CodeBaseBuild.build_codebase import gen_repo_sum_single
 from function.CodeBaseBuild.build_codebase import repo_sum_emb_single
-from function.CodeGeneration.prompt import code_gen_instruct, code_gen_edit, code_gen_mulreq
-from function.CodeGeneration.content_process import asset_content
+from function.CodeGeneration.prompt import (
+    code_gen_instruct,
+    code_gen_edit,
+    code_gen_mulreq,
+)
+from function.CodeGeneration.util import asset_content
 from function.CodeGeneration.generation import generate_api
-from function.CodeGeneration.content_process import json_parse
-from function.CodeGeneration.content_process import code_parse
-from function.CodeGeneration.content_process import info_parse
+from function.CodeGeneration.util import json_parse
+from function.CodeGeneration.util import code_parse
+from function.CodeGeneration.util import info_parse
 from function.CodeCheck.prompt import code_check
-from function.CodeCheck.analysis_snippet.analysis_snippet import SnippetAnalyzer
-from function.CodeCheck.content_process import err_parse, compare_code
+from function.CodeCheck.util import err_parse, compare_code
 from function.CodeBaseBuild.util import gen_code_sum
 from function.CodeBaseBuild.build_codebase import string_parse_new
 from function.CodeBaseBuild.build_codebase import string_parse_old
 from app.logger import logger_global
 from function.CodeBaseBuild.llm_gen import nlp_emb_api
+from function.CodeCheck.util import err_list_parse
+from function.CodeCheck.code_check import build_in_check
 
 router = APIRouter()
 build_lock = Lock()
@@ -91,12 +97,13 @@ is_building = False
 def get_config():
     config.load()
     data = config.get()
-    if 'config' not in data.keys():
-        return data        
-    return data['config']
+    if "config" not in data.keys():
+        return data
+    return data["config"]
+
 
 @router.post("/update_config")
-async def update_config(request:ConfigRequest):
+async def update_config(request: ConfigRequest):
 
     try:
         info_dict = json.loads(request.info)
@@ -105,20 +112,32 @@ async def update_config(request:ConfigRequest):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
 @router.post("/getconfig")
 async def get_config(settings: Dict[str, Any] = Depends(get_config)):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings if 'config' in settings.keys() else settings
+    settings = (
+        deepcopy(settings)["config"]
+        if "config" in settings.keys()
+        else settings if "config" in settings.keys() else settings
+    )
     return {"config": settings}
 
 
-@router.post("/imrepo", response_model=ImportRepoResponse)
+@router.post("/repoparse", response_model=RepoParseResponse)
 async def import_repository(
-    request: ImportRepoRequest, settings: Dict[str, Any] = Depends(get_config)
+    request: RepoParseRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
     """
-    复用资产导入接口
+    代码库解析接口
+
+    Args:
+        request (RepoParseRequest): _description_
+        settings (Dict[str, Any], optional): _description_. Defaults to Depends(get_config).
+
+    Returns:
+        _type_: _description_
     """
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     repo_path = ""
     logger.info(f"接收到代码库导入请求")
@@ -180,10 +199,16 @@ async def import_repository(
             return {"message": f"代码资产提取失败，请检查代码资产中是否包含函数"}
         logger.info(f"开始生成函数级资产摘要")
         if max_workers <= 1:
-            result = gen_function_sum_single(asset_path=asset_path, host=host, model=model, key=key)
+            result = gen_function_sum_single(
+                asset_path=asset_path, host=host, model=model, key=key
+            )
         else:
             result = await gen_function_sum_multy(
-                asset_path=asset_path, max_workers=max_workers, host=host, model=model, key=key
+                asset_path=asset_path,
+                max_workers=max_workers,
+                host=host,
+                model=model,
+                key=key,
             )
         logger.info(f"{result}")
 
@@ -208,14 +233,27 @@ async def import_repository(
 
         logger.info(f"开始生成模块级别资产摘要")
         if max_workers <= 1:
-            result = gen_module_sum_single(asset_path=asset_path, info_path=info_path, host=host, model=model, key=key)
+            result = gen_module_sum_single(
+                asset_path=asset_path,
+                info_path=info_path,
+                host=host,
+                model=model,
+                key=key,
+            )
         else:
             result = await gen_module_sum_multy(
-                asset_path=asset_path, info_path=info_path, max_workers=max_workers, host=host, model=model, key=key
+                asset_path=asset_path,
+                info_path=info_path,
+                max_workers=max_workers,
+                host=host,
+                model=model,
+                key=key,
             )
         logger.info(f"{result}")
         logger.info(f"开始生成系统级资产摘要")
-        result = gen_repo_sum_single(info_path=info_path, host=host, model=model, key=key)
+        result = gen_repo_sum_single(
+            info_path=info_path, host=host, model=model, key=key
+        )
         logger.info(f"{result}")
 
         logger.info(f"开始生成模块、系统级资产嵌入")
@@ -239,6 +277,8 @@ async def import_repository(
     }
 
 
+
+
 @router.post("/search", response_model=SearchResponse)
 async def search_assets(
     request: SearchRequest, settings: Dict[str, Any] = Depends(get_config)
@@ -246,7 +286,7 @@ async def search_assets(
     """
     代码资产检索接口实现
     """
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info(f"*接收到代码资产检索请求")
 
@@ -315,6 +355,7 @@ async def search_assets(
     logger.info(f"【{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}】完成检索")
     return {"result": result_list}
 
+
 @router.post("/searchcode", response_model=SearchCodeResponse)
 async def search_assets_code(
     request: SearchCodeRequest, settings: Dict[str, Any] = Depends(get_config)
@@ -322,7 +363,7 @@ async def search_assets_code(
     """
     代码资产检索接口实现
     """
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info(f"接收到代码资产检索请求")
 
@@ -404,7 +445,7 @@ async def import_assets(
     """
     代码资产入库
     """
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info(f"接收到代码资产入库请求")
 
@@ -458,7 +499,7 @@ async def import_assets(
         id = asset["id"]
         if id not in request.assets:
             continue
-        repo_name = asset["repo_name"].split('_')[0]
+        repo_name = asset["repo_name"].split("_")[0]
         repo_path = os.path.join(repo_path, f"{repo_name}")
         asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}.csv")
         info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}.json")
@@ -471,17 +512,11 @@ async def import_assets(
         asset_path = ""
         info_path = ""
         for file in os.listdir(codebase_path):
-            r = file.split('_assets_v_')[0]
-            if (
-                repo_name == r
-                and file.endswith(".csv")
-            ):
+            r = file.split("_assets_v_")[0]
+            if repo_name == r and file.endswith(".csv"):
                 asset_path = os.path.join(codebase_path, file)
-            i = file.split('_info_v_')[0]
-            if (
-                repo_name == i
-                and file.endswith(".json")
-            ):
+            i = file.split("_info_v_")[0]
+            if repo_name == i and file.endswith(".json"):
                 info_path = os.path.join(codebase_path, file)
         # 检查该系统是否存在坏资产
         if not asset_path == "":
@@ -574,7 +609,9 @@ async def import_assets(
                 logger.info(f"{result}")
 
                 logger.info(f"开始生成系统级资产摘要")
-                result = gen_repo_sum_single(info_path=info_path, host=host, model=model, key=key)
+                result = gen_repo_sum_single(
+                    info_path=info_path, host=host, model=model, key=key
+                )
                 logger.info(f"{result}")
                 logger.info(f"开始生成模块、系统级资产嵌入")
                 result = repo_sum_emb_single(
@@ -605,18 +642,25 @@ async def import_assets(
                 info_path = info_path_new
                 logger.info(f"开始生成模块级别资产摘要")
                 result = gen_module_sum_single(
-                    asset_path=asset_path, info_path=info_path, host=host, model=model, key=key, target_module=asset["module"]
+                    asset_path=asset_path,
+                    info_path=info_path,
+                    host=host,
+                    model=model,
+                    key=key,
+                    target_module=asset["module"],
                 )
                 logger.info(f"{result}")
                 logger.info(f"开始生成系统级资产摘要")
-                result = gen_repo_sum_single(info_path=info_path, host=host, model=model, key=key)
+                result = gen_repo_sum_single(
+                    info_path=info_path, host=host, model=model, key=key
+                )
                 logger.info(f"{result}")
                 logger.info(f"开始生成模块、系统级资产嵌入")
                 result = repo_sum_emb_single(
                     info_path=info_path, url=settings.get("nlp_emb", {}).get("url")
                 )
                 logger.info(f"{result}")
-                id_list.append(asset['id'])
+                id_list.append(asset["id"])
                 count += 1
         except Exception as e:
             logger.error(f"临时代码资产{asset['id']}入库失败")
@@ -645,7 +689,7 @@ async def temp_asset(
     request: TempAssetRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
 
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info("接收到获取临时资产请求")
 
@@ -659,13 +703,13 @@ async def temp_asset(
     result = []
     for index, row in temp_asset.iterrows():
         temp = TempAsset(
-                id=row['id'],
-                name=row['repo_name'],
-                module=row['file_path'],
-                signature=row['signature'],
-                description=row['summary'],
-                source_code=row['source_code'],
-            ).model_dump()
+            id=row["id"],
+            name=row["repo_name"],
+            module=row["file_path"],
+            signature=row["signature"],
+            description=row["summary"],
+            source_code=row["source_code"],
+        ).model_dump()
         result.append(temp)
     logger.info(f"返回临时资产列表")
     return {"assets": result}
@@ -675,7 +719,7 @@ async def temp_asset(
 async def rm_temp_asset(
     request: RmTempAssetRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info("接收到删除临时资产请求")
     lib = request.lib
@@ -695,7 +739,7 @@ async def rm_temp_asset(
 async def edit_temp_asset(
     request: EditAssetRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info("接收到编辑临时资产请求")
     lib = request.lib
@@ -710,7 +754,7 @@ async def edit_temp_asset(
     repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
     version = datetime.now().strftime("%Y%m%d%H%M%S")
     emb_url = settings.get("nlp_emb", {}).get("url")
-    mask = temp_asset["id"] == asset['id']
+    mask = temp_asset["id"] == asset["id"]
     if not mask.any():
         logger.error("临时资产库中不存在对应资产")
         result = temp_asset_from_df(temp_asset)
@@ -725,11 +769,11 @@ async def edit_temp_asset(
     key = settings.get("llm", {}).get("key")
     # 判断是否为源代码更改
     lib_code = temp_asset.loc[mask, "raw_code"].values[0].strip()
-    asset_code = asset['source_code'].strip()
+    asset_code = asset["source_code"].strip()
     if lib_code != asset_code:
         asset_list = process_temp_asset(
             repo_path=repo_path,
-            file_path=asset['module'],
+            file_path=asset["module"],
             code=asset_code,
             version=version,
             stopword_path=stopword_path,
@@ -737,7 +781,7 @@ async def edit_temp_asset(
             codebase_path=codebase_path,
             host=host,
             model=model,
-            key=key
+            key=key,
         )
         if len(asset_list) == 0:
             logger.error(f"临时资产{asset['id']}编辑失败, 未检测到资产")
@@ -757,7 +801,7 @@ async def edit_temp_asset(
         temp_asset.loc[mask, "extent"] = asset_info["extent"]
         temp_asset.loc[mask, "file_path"] = asset_info["file_path"]
         temp_asset.loc[mask, "module"] = asset_info["module"]
-        temp_asset.loc[mask, "repo_name"] = asset['name']
+        temp_asset.loc[mask, "repo_name"] = asset["name"]
         temp_asset.loc[mask, "sum_tokenize"] = asset_info["sum_tokenize"]
         temp_asset.loc[mask, "sum_embedding"] = asset_info["sum_embedding"]
         temp_asset.loc[mask, "raw_code"] = asset_code
@@ -776,10 +820,10 @@ async def edit_temp_asset(
                     "extent": asset_info["extent"],
                     "file_path": asset_info["file_path"],
                     "module": asset_info["module"],
-                    "repo_name": asset['name'],
+                    "repo_name": asset["name"],
                     "sum_tokenize": asset_info["sum_tokenize"],
                     "sum_embedding": asset_info["sum_embedding"],
-                    "raw_code": asset_code
+                    "raw_code": asset_code,
                 }
                 new_asset = pd.DataFrame([a])
                 temp_asset = pd.concat([temp_asset, new_asset], ignore_index=True)
@@ -787,21 +831,20 @@ async def edit_temp_asset(
         temp_asset.loc[mask, "name"] = asset["name"]
 
         lib_file_path = temp_asset.loc[mask, "file_path"].values[0].strip()
-        asset_file_path = asset['module'].strip()
-        if asset_file_path.startswith('/'):
+        asset_file_path = asset["module"].strip()
+        if asset_file_path.startswith("/"):
             asset_file_path = asset_file_path[1:]
-        elif asset_file_path.startswith('./'):
+        elif asset_file_path.startswith("./"):
             asset_file_path = asset_file_path[2:]
-        if not asset_file_path.endswith('.c'):
-            asset_file_path = os.path.join(asset_file_path, 'main.c')
+        if not asset_file_path.endswith(".c"):
+            asset_file_path = os.path.join(asset_file_path, "main.c")
         if lib_file_path != asset_file_path:
             module = os.path.dirname(asset_file_path)
-            temp_asset.loc[mask, "module"] = '根模块' if module == '' else module
+            temp_asset.loc[mask, "module"] = "根模块" if module == "" else module
         temp_asset.loc[mask, "file_path"] = asset_file_path
 
-        
         lib_sum = temp_asset.loc[mask, "summary"].values[0].strip()
-        asset_sum = asset['description'].strip()
+        asset_sum = asset["description"].strip()
         if lib_sum != asset_sum:
             temp_asset.loc[mask, "summary"] = asset_sum
             temp_asset.loc[mask, "sum_tokenize"] = list(jieba.cut_for_search(asset_sum))
@@ -821,7 +864,7 @@ async def edit_temp_asset(
 
 @router.post("/libregs", response_model=LibRegsResponse)
 async def lib_regs(settings: Dict[str, Any] = Depends(get_config)):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info("接收到获取临时代码资产库ID请求")
     id = str(uuid.uuid1()).replace("-", "")
@@ -829,9 +872,7 @@ async def lib_regs(settings: Dict[str, Any] = Depends(get_config)):
 
 
 @router.post("/imreq", response_model=ImReqResponse, summary="解析WORD文档需求")
-async def imreq(
-    file: UploadFile = File(..., description="上传的WORD文档")
-):
+async def imreq(file: UploadFile = File(..., description="上传的WORD文档")):
     logger = deepcopy(logger_global)
     logger.info("接收到解析需求文档请求")
 
@@ -859,7 +900,7 @@ async def imreq(
         return {"requirements": requirement_items}
 
     except Exception as e:
-        logger.info(f'解析文档失败{e}')
+        logger.info(f"解析文档失败{e}")
     finally:
         if "temp_file_path" in locals() and os.path.exists(temp_file_path):
             os.remove(temp_file_path)
@@ -869,16 +910,16 @@ async def imreq(
 async def gen_code_rag(
     request: GenerateCodeRagRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info(f"接收到代码生成请求")
 
     # 开始检索代码资产
     req_list = request.requirements
     result = []
-    ref_info = ''
+    ref_info = ""
     for index, req in enumerate(req_list):
-        ref_info = ''
+        ref_info = ""
         req_id = req.id
         req_content = req.content
         logger.info(
@@ -912,7 +953,7 @@ async def gen_code_rag(
             columns=columns,
             emb_url=settings.get("nlp_emb", {}).get("url"),
         )
-        result_info = ''
+        result_info = ""
         for count, example in examples.iterrows():
             if count >= topk:
                 break
@@ -930,7 +971,11 @@ async def gen_code_rag(
         asset_info = asset_content(example)
         prompt_templete = code_gen_mulreq
         prompt_templete.generate_prompt(
-            user_param={"asset": asset_info, "requirement": req_content, 'reference': ref_info}
+            user_param={
+                "asset": asset_info,
+                "requirement": req_content,
+                "reference": ref_info,
+            }
         )
         messages = prompt_templete.generate_message()
         logger.info(f"完成提示词加载")
@@ -941,21 +986,18 @@ async def gen_code_rag(
             key = settings.get("llm", {}).get("key")
             response = generate_api(messages, host=host, model=model, key=key)
             response = response.split("</think>")[-1]
-            info = {
-                "code": code_parse(response),
-                "info": info_parse(response)
-            }
+            info = {"code": code_parse(response), "info": info_parse(response)}
             logger.info(f"完成0次代码生成")
             itea_max = settings.get("CodeGeneration", {}).get("itea")
             itea_count = 0
             for itea in range(itea_max):
                 itea_count = itea
-                if info['code']=='' or info['info']=='':
-                    if info['code']=='':
+                if info["code"] == "" or info["info"] == "":
+                    if info["code"] == "":
                         messages[-1][
                             "content"
                         ] += "你生成的内容中，C语言代码应该用```c和```包裹起来，记得遵守规则\n"
-                    if info['info']=='':
+                    if info["info"] == "":
                         messages[-1][
                             "content"
                         ] += "你生成的内容中，资产复用说明应该用```info和```包裹起来，记得遵守规则\n"
@@ -963,16 +1005,13 @@ async def gen_code_rag(
                     response = generate_api(messages, host=host, model=model, key=key)
                     response = response.split("</think>")[-1]
                     logger.info(f"完成{itea+1}次信息修正")
-                    info = {
-                        "code": code_parse(response),
-                        "info": info_parse(response)
-                    }
+                    info = {"code": code_parse(response), "info": info_parse(response)}
                     logger.info(f"完成{itea+1}次信息采集")
                 else:
                     break
-            if info['code']=='' or info['info']=='':
-                    info["code"] = response
-                    info["info"] = "复用情况分析失败，请参考代码生成结果"
+            if info["code"] == "" or info["info"] == "":
+                info["code"] = response
+                info["info"] = "复用情况分析失败，请参考代码生成结果"
             logger.info(f"完成生成")
             logger.info(f"迭代次数:{itea_count}")
             logger.info(f'生成代码\n{info["code"]}')
@@ -980,7 +1019,11 @@ async def gen_code_rag(
             logger.info(f"完成代码生成")
 
             item = CodeGenResult(
-                id=req_id, content=req_content, code=info["code"], assets=example, info=info['info']
+                id=req_id,
+                content=req_content,
+                code=info["code"],
+                assets=example,
+                info=info["info"],
             )
             result.append(item)
         except APITimeoutError as e:
@@ -990,7 +1033,7 @@ async def gen_code_rag(
                 content=req_content,
                 code="服务器繁忙，生成失败，请稍后再试",
                 assets=example,
-                info = "复用情况分析失败"
+                info="复用情况分析失败",
             )
             result.append(item)
         except Exception as e:
@@ -1000,7 +1043,7 @@ async def gen_code_rag(
                 content=req_content,
                 code="服务器繁忙，生成失败，请稍后再试",
                 assets=example,
-                info = "复用情况分析失败"
+                info="复用情况分析失败",
             )
             result.append(item)
     return {"result": result}
@@ -1010,7 +1053,7 @@ async def gen_code_rag(
 async def edit_code(
     request: EditCodeRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     logger = deepcopy(logger_global)
     logger.info("接收到代码优化请求")
     logger.info(f"接收到的需求:{request.content}")
@@ -1031,28 +1074,25 @@ async def edit_code(
     messages = prompt_templete.generate_message()
     logger.info(f"完成提示词加载")
     logger.info(messages)
-    result= ''
+    result = ""
     try:
         host = settings.get("llm", {}).get("url")
         model = settings.get("llm", {}).get("model")
         key = settings.get("llm", {}).get("key")
         response = generate_api(messages, host=host, model=model, key=key)
         response = response.split("</think>")[-1]
-        result = {
-            "code": code_parse(response),
-            "info": info_parse(response)
-        }
+        result = {"code": code_parse(response), "info": info_parse(response)}
         logger.info(f"完成0次代码生成")
         itea_max = settings.get("CodeGeneration", {}).get("itea")
         itea_count = 0
         for itea in range(itea_max):
             itea_count = itea
-            if result['code']=='' or result['info']=='':
-                if result['code']=='':
+            if result["code"] == "" or result["info"] == "":
+                if result["code"] == "":
                     messages[-1][
                         "content"
                     ] += "你生成的内容中，C语言代码应该用```c和```包裹起来，记得遵守规则\n"
-                if result['info']=='':
+                if result["info"] == "":
                     messages[-1][
                         "content"
                     ] += "你生成的内容中，资产复用说明应该用```info和```包裹起来，记得遵守规则\n"
@@ -1060,14 +1100,11 @@ async def edit_code(
                 response = generate_api(messages, host=host, model=model, key=key)
                 response = response.split("</think>")[-1]
                 logger.info(f"完成{itea+1}次信息修正")
-                result = {
-                    "code": code_parse(response),
-                    "info": info_parse(response)
-                }
+                result = {"code": code_parse(response), "info": info_parse(response)}
                 logger.info(f"完成{itea+1}次信息采集")
             else:
                 break
-        if result['code']=='' or result['info']=='':
+        if result["code"] == "" or result["info"] == "":
             logger.info(f"信息采集存在问题")
             result = {}
             result["code"] = response
@@ -1083,305 +1120,244 @@ async def edit_code(
     except Exception as e:
         logger.error(f"代码生成失败: {str(e)}")
         return {"code": "服务器繁忙，生成失败，请稍后再试"}
-    return {"code": result['code'].strip(), "info":result['info'].strip()}
+    return {"code": result["code"].strip(), "info": result["info"].strip()}
 
 
+# 代码审查接口
 @router.post("/review", response_model=ReviewResponse)
-async def review_code(
-    request: ReviewRequest, settings: Dict[str, Any] = Depends(get_config)
+async def review(
+    file: UploadFile=File(...), request: Dict[str, Any] = Form(...), settings: Dict[str, Any] = Depends(get_config)
 ):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
+    # 加载配置信息
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
 
+    # 声明logger对象
     logger = deepcopy(logger_global)
     logger.info(f"接收到代码审查请求")
 
-    code = request.code
-    analyzer = SnippetAnalyzer()
-    result_str = analyzer.analyze(code)
-    type = ""
-    line = -1
-    col = -1
-    desp = ""
-    errors = []
-    logger.info(f"代码审查完成\n{result_str}")
+    # 加载请求信息
+    request_dict = json.loads(request)
+    request = ReviewRequest(**request)
+    file = request.file
+    support = request.support
+    end = request.end
+    start = request.start
 
-    item = {
-        'line': -1,
-        'col': -1,
-        'desp': "代码正确，并且符合规范"
-    }
-    if len(result_str.strip()) > 0:
-        err_list = json.loads(result_str)
-        if isinstance(err_list, dict):
-            if "error" in err_list.keys():
-                if type == "":
-                    type = "compile"
-                content = err_list["detail"]
-                for line in err_list["error"]:
-                    if "   20 |" not in line:
-                        if "error:" in line:
-                            if line != -1:
-                                item['line'] = line
-                                item['col'] = col
-                                item['desp'] = desp
-                                errors.append(deepcopy(item))
-                            line = int(content.split(":")[1].strip())
-                            col = int(content.split(":")[2].strip())
-                            desp = "ERR_IINFO: " + content.split(":")[3].strip() + "\n"
-                        elif "note" in line:
-                            desp += "FIX_ADVICE" + content.split(":")[3].strip() + "\n"
-        else:
-            if len(err_list) == 0:
-                type = "right"
-                item['line'] = -1
-                item['col'] = -1
-                item['desp'] = "代码正确，并且符合规范"
-                errors.append(deepcopy(item))
-            for index, err in enumerate(err_list):
-                if "error" in err.keys():
-                    if type == "":
-                        type = "compile"
-                    content = err["detail"]
-                    for index, string in enumerate(content):
-                        if ('error:' in string and 
-                        '.c:' in string and
-                        not string.startswith('   ')):
-                            l = deepcopy(line)
-                            c = deepcopy(col)
-                            line = int(string.split(":")[1].strip())
-                            col = int(string.split(":")[2].strip())
-                            if  ( l == -1 or c == -1 ) or (l != line):
-                                if not  ( l == -1 or c == -1 ):
-                                    item['line'] = l
-                                    item['col'] = c
-                                    item['desp'] = desp
-                                    errors.append(deepcopy(item))
-                                desp = (
-                                    "ERR_IINFO: " + string.split("error:", 4)[-1].strip() + "\n"
-                                )
-                            else:
-                                desp += string.split("error:", 4)[-1].strip() + "\n"
-                    if not  ( line == -1 or col == -1 ):
-                        item['line'] = line
-                        item['col'] = col
-                        item['desp'] = desp
-                        errors.append(deepcopy(item))
-                else:
-                    if type == "":
-                        type = "semantic"
-                    line = int(
-                        err["location"].split(",")[0].replace("Line", "").strip()
-                    )
-                    col = int(err["location"].split(",")[1].replace("Col", "").strip())
-                    desp = err["description"]
-                    item['line'] = line
-                    item['col'] = col
-                    item['desp'] = desp
-                    errors.append(deepcopy(item))
+    # 加载工程目录
+    project_dir = settings.get('CodeCheck', {}).get('projectPath')
+    temp_project_file = os.path.join(project_dir, f'{datetime.now().strftime("%Y%m%d%H%M%S")}_{file.filename}')
+    with open(temp_project_file, 'wb') as temp_project:
+        content = await temp_project.read()
+        temp_project.write(content)
+    try:
+        temp_project_dir = os.path.join(os.path.join(project_dir, f'{datetime.now().strftime("%Y%m%d%H%M%S")}_{file.filename.split('.')[0]}'))
+        with zipfile.ZipFile(temp_project_file, 'r') as zip_ref:
+            zip_ref.extractall(temp_project_dir)
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=400, detail="Invalid ZIP file")
+
+    # 审查代码
+    code_file = os.path.join(temp_project_dir, file.filename)
+    code = ''
+    with open(code_file, 'r', encoding='utf-8') as file:
+        lines = file.readlines()
+        # 确保行号在有效范围内
+        start = max(0, start - 1)
+        end = min(len(lines), end)
+        code =  ''.join(lines[start:end])
+    err_list = build_in_check(code=code, support=support)
+    # 审查结果解析
+    type = ""
+    errors = []
+    item = {"line": -1, "col": -1, "desp": "代码正确，并且符合规范"}
+    if len(err_list) == 0:
+        type = "right"
+        item["line"] = -1
+        item["col"] = -1
+        item["desp"] = "代码正确，并且符合规范"
+        errors.append(deepcopy(item))
+    else:
+        type = "semantic"
+        errors = err_list_parse(err_list=err_list)
+
+    # 日志记录
     logger.info(f"代码审查结果\n{type}")
     logger.info(f"代码审查详情\n{errors}")
-    
     return {"type": type, "err": errors}
 
 
+# 代码修正接口
 @router.post("/fix", response_model=FixResponse)
 async def fix(request: FixRequest, settings: Dict[str, Any] = Depends(get_config)):
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
-    logger = deepcopy(logger_global)
-    logger.info(f"接收到代码修正请求")
+    """
+    代码修正接口
 
+    Args:
+        request (FixRequest): 代码修正接口请求数据
+        settings (Dict[str, Any], optional): 接口依赖配置信息
+
+    Returns:
+        接口响应信息
+    """
+    # 加载请求参数
     code = request.code
     type = request.type
-    error_list = request.err
-    itea = settings.get("CodeCheck", {}).get("itea", 5)
-    prompt = code_check
+    err_list = request.err
+
+    # 加载配置信息
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
+    itea = settings.get("CodeCheck", {}).get("itea")
     host = settings.get("llm", {}).get("url")
     model = settings.get("llm", {}).get("model")
     key = settings.get("llm", {}).get("key")
-    raw_res = deepcopy(code)
+
+    # 声明logger对象
+    logger = deepcopy(logger_global)
+    logger.info(f"接收到代码修正请求")
+
+    # 如果需要审查 ，则进行代码审查
+    type = ""
+    errors = []
+
+    # 进行代码修正
+    prompt = code_check
     snippet = deepcopy(code)
     err_info = ""
-    fixed = False
-    errors = []
-    item = {
-        'line': -1,
-        'col': -1,
-        'desp': "代码正确，并且符合规范"
-    }
     i = 0
-    while i < itea:
-        err_info = ""
-        if i > 0 or type == "uncheck":
-            analyzer = SnippetAnalyzer()
-            snippet = snippet.strip()
-            result_str = analyzer.analyze(snippet)
-            if len(result_str.strip()) > 0:
-                err_list = json.loads(result_str)
-                if isinstance(err_list, dict):
-                    if "error" in err_list.keys():
-                        err_info = str(err_list["error"])
-                        if err_info.lower().strip().split(" ", "") == "emptycode":
-                            snippet = code_raw
-                            continue
-                    else:
-                        err_info = str(err_list)
-                if len(err_list) == 0:
-                    fixed = True
-                    break
-                else:
-                    err_info = err_parse(err_list)
-            else:
-                fixed = True
-                break
-        else:
-            err_list = request.err
-            if type == "right":
-                info = {}
-                fixed = True
-                info["code"] = "无"
-                info["type"] = "无"
-                info["loc"] = "无"
-                break
-            elif type == "compile":
-                for index, error in enumerate(err_list):
-                    err_info += f"{index+1}. 存在编译错误, 错误位置:Line {error.line}, Col {error.col}, 错误信息: {error.desp}\n"
-            elif type == "semantic":
-                for index, error in enumerate(err_list):
-                    err_info += f"{index+1}. 不符合代码规范, 错误位置:Line {error.line}, Col {error.col}, 错误信息: {error.desp}\n"
-        code_raw = deepcopy(snippet)
-        logger.info(f"--- 第{i+1}轮审查意见 ---\n{err_info}")
-        if i == 0:
-            prompt.generate_prompt(user_param={"code": snippet, "error": err_info})
-            messages = prompt.generate_message()
-        else:
-            messages = prompt.add_chat("assistant", snippet)
-            messages = prompt.add_chat(
-                "user",
-                prompt.user_prompt_template.invoke(
-                    {"code": snippet, "error": err_info}
-                ).text,
-            )
+
+    # 判断是否需要修正
+    if type == "right":
+        info = {}
+        fixed = True
+        info["code"] = "无"
+        info["type"] = "无"
+        info["loc"] = "无"
+        return {"result": snippet}
+    else:
+        for index, error in enumerate(err_list):
+            err_info += f"{index+1}. 不符合代码规范, 错误位置:Line {error.line}, Col {error.col}, 错误信息: {error.desp}\n"
+        logger.info(f" 当前代码存在异常\n{err_info}")
+        prompt.generate_prompt(user_param={"code": snippet, "error": err_info})
+        messages = prompt.generate_message()
         snippet = generate_api(messages, host=host, model=model, key=key)
         snippet = snippet.split("</think>")[-1]
-        if ((not "```c" in snippet) and (not "```C" in snippet)) or (
-            not "```" in snippet
-        ):
-            messages[-1][
-                "content"
-            ] += "如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这句话"
-            snippet = generate_api(messages, host=host, model=model, key=key)
-            snippet = snippet.split("</think>")[-1]
-        snippet = code_parse(snippet)
-        i += 1
-        if i == itea and not fixed:
-            line = -1
-            col = -1
-            desp = ""
-            item = {
-                'line': -1,
-                'col': -1,
-                'desp': "代码正确，并且符合规范"
-            }
-            type = ""
-            if isinstance(err_list, dict):
-                if "error" in err_list.keys():
-                    if type == "":
-                        type = "compile"
-                    content = err_list["detail"]
-                    for string in err_list["error"]:
-                        if "   20 |" not in string:
-                            if "error:" in string:
-                                if line != -1:
-                                    item['line'] = line
-                                    item['col'] = col
-                                    item['desp'] = desp
-                                    errors.append(deepcopy(item))
-                                line = int(content.split(":")[1].strip())
-                                col = int(content.split(":")[2].strip())
-                                desp = (
-                                    "ERR_IINFO: " + content.split(":")[3].strip() + "\n"
-                                )
-                            elif "note" in string:
-                                desp += (
-                                    "FIX_ADVICE" + content.split(":")[3].strip() + "\n"
-                                )
+        while i < itea:
+            if ((not "```c" in snippet) and (not "```C" in snippet)) or (
+                not "```" in snippet
+            ):
+                messages[-1][
+                    "content"
+                ] += "如果需要生成代码，请将C语言代码包裹在```c  ```之间，如果不需要生成代码请忽略这句话"
+                snippet = generate_api(messages, host=host, model=model, key=key)
+                snippet = snippet.split("</think>")[-1]
+                i += 1
             else:
-                for index, err in enumerate(err_list):
-                    if "error" in err.keys():
-                        if type == "":
-                            type = "compile"
-                        content = err["detail"]
-                        for index, string in enumerate(content):
-                            if ('error:' in string and 
-                            '.c:' in string and
-                            not string.startswith('   ')):
-                                l = deepcopy(line)
-                                c = deepcopy(col)
-                                line = int(string.split(":")[1].strip())
-                                col = int(string.split(":")[2].strip())
-                                if  ( l == -1 or c == -1 ) or (l != line):
-                                    if not  ( l == -1 or c == -1 ):
-                                        item['line'] = l
-                                        item['col'] = c
-                                        item['desp'] = desp
-                                        errors.append(deepcopy(item))
-                                    desp = (
-                                        "ERR_IINFO: " + string.split("error:", 4)[-1].strip() + "\n"
-                                    )
-                                else:
-                                    desp += string.split("error:", 4)[-1].strip() + "\n"
-                        if not  ( line == -1 or col == -1 ):
-                            item['line'] = line
-                            item['col'] = col
-                            item['desp'] = desp
-                            errors.append(deepcopy(item))
-                    else:
-                        if type == "":
-                            type = "semantic"
-                        line = int(
-                            err["location"].split(",")[0].replace("Line", "").strip()
-                        )
-                        col = int(err["location"].split(",")[1].replace("Col", "").strip())
-                        desp = err["description"]
-                        item['line'] = line
-                        item['col'] = col
-                        item['desp'] = desp
-                        errors.append(deepcopy(item))
-    snippet = snippet.strip()       
-    compare = compare_code(raw_res, snippet)
-    print(f"=== 审查后代码 === \n {snippet}")
-    logger.info(f"********** 完成代码审查 **********")
-    if fixed:
-        type = "right"
-        item['line'] = -1
-        item['col'] = -1
-        item['desp'] = "代码正确，并且符合规范"
-        errors.append(deepcopy(item))
-    return {"result": snippet, "info": compare["info"], "type": type, "err": errors}
+                break
+
+        snippet = code_parse(snippet)
+        logger.info(f"修正后代码\n {snippet}")
+        logger.info(f"完成代码修正")
+        return {"result": snippet}
+
+
+@router.post("/toollist", response_model=ToolListResponse)
+async def tool_list(settings: Dict[str, Any] = Depends(get_config)):
+    """
+    获取代码审查工具列表
+
+    Args:
+        settings (Dict[str, Any], optional): 接口配置信息. Defaults to Depends(get_config).
+
+    Returns:
+        ToolListResponse: 工具列表响应信息
+    """
+
+    # 加载配置信息
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
+    tool_list = settings.get("CodeCheck", {}).get("tools", [])
+
+    # 声明logger对象
+    logger = deepcopy(logger_global)
+    logger.info("接收到获取代码审查工具列表请求")
+
+    # 获取工具列表
+    result = []
+    for tool in tool_list:
+        result.append(
+            {"name": tool["name"], "type": tool["type"], "endpoint": tool["endpoint"]}
+        )
+    logger.info(f"工具列表内容: {result}")
+    logger.info(f"完成获取代码审查工具列表请求响应")
+    return {"tools": result}
+
+
+@router.post("/toolsupport", response_model=ToolSupportResponse)
+async def tool_support(
+    request: ToolSupportRequest, settings: Dict[str, Any] = Depends(get_config)
+):
+    """
+    获取代码审查工具列表
+
+    Args:
+        settings (Dict[str, Any], optional): 接口配置信息. Defaults to Depends(get_config).
+
+    Returns:
+        ToolListResponse: 工具列表响应信息
+    """
+
+    # 加载配置信息
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
+    tool_list = settings.get("CodeCheck", {}).get("tools", [])
+
+    # 声明logger对象
+    logger = deepcopy(logger_global)
+    logger.info("接收到获取代码审查工具支持审查标准列表请求")
+
+    # 加载请求信息
+    name = request.tool
+    logger.info(f"请求工具名称:{name}")
+
+    # 获取工具列表
+    result = {}
+    for tool in tool_list:
+        if tool["name"] == name:
+            result["support"] = tool["support"]
+    logger.info(f"工具支持规则目录: {result}")
+    logger.info(f"完成获取代码审查工具支持审查标准列表请求响应")
+    return {"supports": result}
 
 
 @router.post("/store", response_model=StoreResponse)
 async def store_asset(
     request: StoreRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
-    def normalize_file_path(file_path):
-        """标准化文件路径，移除数字后缀"""
-        # 分离文件名和扩展名
-        name, ext = os.path.splitext(file_path)
-        # 移除末尾的数字后缀（如果有）
-        # 使用正则表达式匹配并移除末尾的_数字
-        normalized_name = re.sub(r'_\d+$', '', name)
-        return f"{normalized_name}{ext}"
+    """
+    临时代码资产存储接口
+
+    Args:
+        request (StoreRequest): 接口请求信息
+
+    """
+
     def single_clean(dataframe: pd.DataFrame):
+        """
+        处理同一资产签名下的文件名冲突问题
+
+        Args:
+            dataframe (pd.DataFrame): 资产目录
+
+        Returns:
+            DataFrame: 处理后的资产目录
+        """
         updates = {}
-        columns_to_check = ['repo_name', 'file_path', 'signature','source_code']
-        dataframe = dataframe.drop_duplicates(subset=columns_to_check, keep='first')
-        columns_to_check = ['repo_name', 'file_path', 'signature']
+        columns_to_check = ["repo_name", "file_path", "signature", "source_code"]
+        dataframe = dataframe.drop_duplicates(subset=columns_to_check, keep="first")
+        columns_to_check = ["repo_name", "file_path", "signature"]
         grouped = dataframe.groupby(columns_to_check)
         for name, group in grouped:
             if len(group) > 1:
                 indices = group.index.tolist()
-                base_name, ext = os.path.splitext(group.iloc[0]['file_path'])
+                base_name, ext = os.path.splitext(group.iloc[0]["file_path"])
                 for i, idx in enumerate(indices):
                     if i == 0:
                         continue
@@ -1389,19 +1365,36 @@ async def store_asset(
                         new_filename = f"{base_name}_{i}{ext}"
                         updates[idx] = new_filename
         for idx, new_path in updates.items():
-            dataframe.loc[idx, 'file_path'] = new_path
-        dataframe = dataframe.drop_duplicates(subset=columns_to_check, keep='first')
+            dataframe.loc[idx, "file_path"] = new_path
+        dataframe = dataframe.drop_duplicates(subset=columns_to_check, keep="first")
         return dataframe
-    settings = deepcopy(settings)['config'] if 'config' in settings.keys() else settings
-    message = ''
+
+    # 加载配置信息
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
+    temp_codebase_path = settings.get("codeBaseBuild", {}).get("tempCodebasePath")
+    codebase_path = settings.get("codeBaseBuild", {}).get("codebasePath", "./data")
+    stopword_path = settings.get("codeBaseBuild", {}).get("stopwordPath")
+    repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
+    emb_url = settings.get("nlp_emb", {}).get("url")
+    host = settings.get("llm", {}).get("url")
+    model = settings.get("llm", {}).get("model")
+    key = settings.get("llm", {}).get("key")
+
+    # 声明logger对象
     logger = deepcopy(logger_global)
     logger.info("接收到增加临时资产请求")
-    logger.info(f"请求内容{request}")
+
+    # 加载请求信息
     lib = request.lib
     raw_asset_list = request.assets
-    logger.info(f"临时资产编号为:{lib}")
+    logger.info(f"临时资产库编号为:{lib}")
+
+    # 声明必要变量
+    item = {}
+    new_asset = []
+    u_conut = 0
+    message = ""
     version = datetime.now().strftime("%Y%m%d%H%M%S")
-    temp_codebase_path = settings.get("codeBaseBuild", {}).get("tempCodebasePath")
     temp_asset_path = os.path.join(temp_codebase_path, f"{lib}.csv")
     if not os.path.exists(temp_asset_path):
         temp_asset = []
@@ -1412,16 +1405,8 @@ async def store_asset(
             logger.info("读取临时资产失败")
             os.remove(temp_asset_path)
             temp_asset = []
-    codebase_path = settings.get("codeBaseBuild", {}).get("codebasePath", "./data")
-    stopword_path = settings.get("codeBaseBuild", {}).get("stopwordPath")
-    repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
-    emb_url = settings.get("nlp_emb", {}).get("url")
-    host = settings.get("llm", {}).get("url")
-    model = settings.get("llm", {}).get("model")
-    key = settings.get("llm", {}).get("key")
-    item = {}
-    new_asset = []
-    u_conut = 0
+
+    # 检查是否为空
     if len(raw_asset_list) == 0:
         logger.info("没有需要增加的临时资产")
         if len(temp_asset) > 0:
@@ -1429,16 +1414,21 @@ async def store_asset(
             asset = [item.dict() for item in asset]
         else:
             asset = []
-        return {"message": "没有需要增加的临时资产",
-                "assets": asset}
+        return {"message": "没有需要增加的临时资产", "assets": asset}
+
+    # 逐个增加临时资产
     for index, asset in enumerate(raw_asset_list):
+
         logger.info(f"正在增加临时资产:{index+1}/{len(raw_asset_list)}")
         repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
         repo_path = os.path.join(repo_path, f"{asset.name}_{version}")
         code = asset.code
-        if code == '':
-            message += f'临时资产:{asset.name}没有源代码\n'
+        # 检查某个资产是否为空
+        if code == "":
+            message += f"临时资产:{asset.name}没有源代码\n"
             continue
+
+        # 处理临时资产
         asset_list = process_temp_asset(
             repo_path=repo_path,
             file_path=asset.module,
@@ -1447,14 +1437,18 @@ async def store_asset(
             stopword_path=stopword_path,
             emb_url=emb_url,
             codebase_path=codebase_path,
-            host = host,
-            model = model,
-            key = key
+            host=host,
+            model=model,
+            key=key,
         )
+
+        # 检查当前代码片段是否含有相应资产
         if len(asset_list) == 0:
-            message += f'临时资产:{asset.name}不包含函数\n'
+            message += f"临时资产:{asset.name}不包含函数\n"
             logger.info(f"增加临时资产失败:{asset.name}")
             continue
+
+        # 资产信息保存
         asset_info = asset_list[0]
         item["id"] = str(uuid.uuid1()).replace("-", "")
         item["name"] = asset_info["name"]
@@ -1488,35 +1482,44 @@ async def store_asset(
                     "repo_name": asset.name,
                     "sum_tokenize": asset_info["sum_tokenize"],
                     "sum_embedding": asset_info["sum_embedding"],
-                    "raw_code": code
+                    "raw_code": code,
                 }
                 new_asset.append(deepcopy(a))
-    
+
     if len(temp_asset) <= 0:
         temp_asset = pd.DataFrame(new_asset)
         temp_asset = single_clean(temp_asset)
         u_conut = len(temp_asset)
+
     elif len(new_asset) > 0:
         new_asset = pd.DataFrame(new_asset)
         new_asset = single_clean(new_asset)
-
-        for col in ['repo_name', 'file_path', 'signature']:
+        for col in ["repo_name", "file_path", "signature"]:
             new_asset[col] = new_asset[col].astype(str)
             temp_asset[col] = temp_asset[col].astype(str)
-        merged_check = pd.merge(new_asset, temp_asset, on=['repo_name', 'file_path', 'signature'], 
-                       how='left', indicator=True)
-        u_conut = (merged_check['_merge'] == 'left_only').sum()
+        merged_check = pd.merge(
+            new_asset,
+            temp_asset,
+            on=["repo_name", "file_path", "signature"],
+            how="left",
+            indicator=True,
+        )
+        u_conut = (merged_check["_merge"] == "left_only").sum()
 
-        temp_keys = temp_asset[['repo_name', 'file_path', 'signature']].apply(tuple, axis=1)
-        new_keys = new_asset[['repo_name', 'file_path', 'signature']].apply(tuple, axis=1)
+        temp_keys = temp_asset[["repo_name", "file_path", "signature"]].apply(
+            tuple, axis=1
+        )
+        new_keys = new_asset[["repo_name", "file_path", "signature"]].apply(
+            tuple, axis=1
+        )
         keep_mask = ~temp_keys.isin(new_keys)
         merged = pd.concat([temp_asset[keep_mask], new_asset], ignore_index=True)
         temp_asset = merged
     if len(temp_asset) > 0:
-        columns_to_check = ['repo_name', 'file_path', 'signature']
-        temp_asset = temp_asset.drop_duplicates(subset=columns_to_check, keep='first')
+        columns_to_check = ["repo_name", "file_path", "signature"]
+        temp_asset = temp_asset.drop_duplicates(subset=columns_to_check, keep="first")
         temp_asset.to_csv(os.path.join(temp_codebase_path, f"{lib}.csv"), index=False)
-        
+
     logger.info(f"临时资产库{request.lib}更新成功\n{temp_asset}")
     if len(temp_asset) > 0:
         asset = temp_asset_from_df(temp_asset)

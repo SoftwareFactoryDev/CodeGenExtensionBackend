@@ -13,11 +13,16 @@ from app.config import config
 from app.routes import router
 
 def create_app(config_path: str = './config.json'):
+
+    # 声明logger对象
     logger = deepcopy(logger_global)
+
+    # 初始化配置信息
     config.set_path(config_path)
     config.load()
     logger_global.info(config.get())
-    config.set_clang('/data/zhouzl/packages/LLVM/llvm-project/build/lib/libclang.so')
+
+    # 设置clang信息
     lib_path = config._data.get("codeBaseBuild", {}).get("clangPath")
     if lib_path:
         cl.Config.set_library_file(lib_path)
@@ -25,8 +30,8 @@ def create_app(config_path: str = './config.json'):
         logger.error("clangPath is not set in config.json")
         exit(1)
 
+    # 创建FastAPI应用
     app = FastAPI(title="Asset Management API")
-
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -34,7 +39,5 @@ def create_app(config_path: str = './config.json'):
         allow_methods=["*"],
         allow_headers=["*"],
     )
-
     app.include_router(router)
-    
     return app

@@ -21,8 +21,8 @@ from function.CodeBaseBuild.prompt import function_sum_template
 from function.CodeBaseBuild.llm_gen import generate_api
 from function.CodeBaseBuild.llm_gen import code_emb_api
 from function.CodeBaseBuild.llm_gen import nlp_emb_api
-from function.CodeBaseBuild.content_process import asset_in_module
-from function.CodeBaseBuild.content_process import module_in_repo
+from function.CodeBaseBuild.util import asset_in_module
+from function.CodeBaseBuild.util import module_in_repo
 from function.CodeBaseBuild.prompt import module_sum_template
 from function.CodeBaseBuild.prompt import repo_sum_template
 from function.CodeBaseBuild.util import json_parse
@@ -31,24 +31,23 @@ from app.logger import logger_global
 thread_local = threading.local()
 
 
-async def process_file(c_file, repo_path, c_parser):
-    logger = deepcopy(logger_global)
-    module = os.path.dirname(os.path.relpath(c_file, repo_path))
-    if module.strip() == "":
-        module = "根模块"
-    file_path = os.path.relpath(c_file, repo_path)
-    try:
-        c_parser.parse_file(c_file)
-        for func in c_parser.functions:
-            func["file_path"] = file_path
-            func["module"] = module
-        return deepcopy(c_parser.functions)
-    except Exception as e:
-        logger.error(f"解析文件 {c_file} 时发生异常: {e}")
+async def repo_parse_multy(repo_path, codebase_path, version, max_workers=4):
+    def process_file(c_file, repo_path, c_parser):
+        logger = deepcopy(logger_global)
+        module = os.path.dirname(os.path.relpath(c_file, repo_path))
+        if module.strip() == "":
+            module = "根模块"
+        file_path = os.path.relpath(c_file, repo_path)
+        try:
+            c_parser.parse_file(c_file)
+            for func in c_parser.functions:
+                func["file_path"] = file_path
+                func["module"] = module
+            return deepcopy(c_parser.functions)
+        except Exception as e:
+            logger.error(f"解析文件 {c_file} 时发生异常: {e}")
         return []
 
-
-async def repo_parse_multy(repo_path, codebase_path, version, max_workers=4):
     logger = deepcopy(logger_global)
     repo_name = os.path.basename(repo_path)
     asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}.csv")
@@ -107,34 +106,66 @@ async def repo_parse_multy(repo_path, codebase_path, version, max_workers=4):
 
 
 def repo_parse_single(repo_path, codebase_path, version, add=False):
+    """
+    解析单个代码仓库，提取代码资产并生成代码库信息
+
+    Args:
+        repo_path (str): 代码仓库的路径
+        codebase_path (str): 存储解析结果的代码库路径
+        version (str): 代码仓库的版本号(commit hash)
+        add (bool): 是否为增量添加模式，默认为False
+
+    Returns:
+        str: 处理结果的描述信息
+    """
+    # 创建日志记录器的深拷贝，避免影响全局日志记录器
     logger = deepcopy(logger_global)
+
+    # 获取代码仓库名称（从路径中提取）
     repo_name = os.path.basename(repo_path)
+
+    # 构建代码资产文件和信息文件的存储路径
     asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}.csv")
     info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}.json")
+    # 检查是否已经存在解析结果
     if os.path.exists(asset_path) and os.path.exists(info_path):
         result = f"代码库{os.path.basename(repo_path)}(Commit版本：{version})已存在，跳过提取代码资产步骤，仅进行代码库功能描述生成。"
     else:
+        # 非增量模式下，删除旧的解析结果
         if not add:
             for file in os.listdir(codebase_path):
                 if repo_name in file:
                     os.remove(os.path.join(codebase_path, file))
-        # 获取信息：所有文件
+
+        # 获取所有C语言源文件和头文件
         c_files = glob.glob(f"{repo_path}/**/*.c", recursive=True)
         h_files = glob.glob(f"{repo_path}/**/*.h", recursive=True)
         all_files = c_files + h_files
+
+        # 创建C语言解析器实例
         c_parser = CParser()
 
-        # 逐个解析C语言文件
+        # 初始化存储列表
         asset_list = []
         module_list = []
+
+        # 遍历所有文件进行解析
         for index, c_file in enumerate(all_files):
+
             logger.info(f"正在处理代码文件 No{index+1}:{c_file}")
+
+            # 获取文件所属模块（从相对路径中提取目录）
             module = os.path.dirname(os.path.relpath(c_file, repo_path))
+
+            # 记录模块
             if module.strip() == "":
                 module = "根模块"
             if module not in module_list:
                 module_list.append(module)
+
+            # 获取文件相对路径
             file_path = os.path.relpath(c_file, repo_path)
+            # 解析C语言文件
             try:
                 c_parser.parse_file(c_file)
                 for func in c_parser.functions:
@@ -626,12 +657,14 @@ def gen_module_sum_single(
     raw_asset_list = deepcopy(asset_list)
     for module in module_list:
         asset_list = deepcopy(raw_asset_list)
-        if target_module :
+        if target_module:
             a = not module["name"] in target_module
             b = not target_module in module["name"]
             if a and b:
                 continue
-        mask = asset_list["module"].str.contains(str(module["name"]), na=False, regex=False)
+        mask = asset_list["module"].str.contains(
+            str(module["name"]), na=False, regex=False
+        )
         match_assets = asset_list[mask]
         asset_list = match_assets[["name", "file_path", "signature", "summary"]].copy()
         asset_info = asset_in_module(asset_list)

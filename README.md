@@ -21,18 +21,18 @@ pip install -r requirements.txt
 从链接: https://pan.baidu.com/s/14JFohl-MJKBrG0-a_gzN8A?pwd=sibt 提取码: sibt  下载 analyzer.tar.gz 文件，并放到 ./client/CodeCheck 目录下，然后执行如下命令：
 
 ```bash
-cd ./function/CodeCheck
+cd ./client/CodeCheck
 tar -zxvf analyzer.tar.gz
 ```
 
 3. 启动服务
-首先激活执行当前服务对应的Python环境，然后执行如下命令
+首先激活执行当前服务对应的Python环境
 ```bash
 cd ../..
-sh app_tun.sh
+nohup ./run_vscode_client.sh > /dev/null 2>&1 &
 ```
 
 4. 查看进程执行状态
 ```bash
-ps -aux | grep app_run
+ps -aux | grep vscode_client
 ```

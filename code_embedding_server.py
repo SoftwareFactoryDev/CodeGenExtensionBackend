@@ -1,20 +1,23 @@
+#!/usr/bin/env python3
+# server_roberta.py
 import os
 import json
 import socket
 import struct
 import torch
-from sentence_transformers import SentenceTransformer
+
+from model.UniXcoder import UniXcoder, UniXcoder_tokenize, UniXcoder_encode
 
 HOST = '0.0.0.0'
-PORT = 14514
-MODEL = '/data/zhouzl/code/Model/bge-large-zh-v1.5'
-os.environ['CUDA_VISIBLE_DEVICES'] = "0, 1"
-print('Loading BGE-Encoder ...')
-model = SentenceTransformer(MODEL, device='cuda')
-print('BGE-Encoder ready on', HOST, PORT)
+PORT = 14516
+MODEL = '/data/zhouzl/code/Model/unixcoder-base'
+os.environ['CUDA_VISIBLE_DEVICES'] = "1"
+print('Loading UniXcoder ...')
+model = UniXcoder(MODEL)
+print('UniXcoder ready on', HOST, PORT)
 
 
-# ---------- 通信辅助 ----------
+
 def send_msg(sock, obj):
     msg = json.dumps(obj).encode('utf-8')
     sock.sendall(struct.pack('!I', len(msg)) + msg)
@@ -42,8 +45,8 @@ def recvall(sock, n):
 # ---------- 推理 ----------
 @torch.no_grad()
 def get_embeddings(texts):
-
-    return model.encode(texts, normalize_embeddings=True)
+    vec = UniXcoder_encode(model, texts, UniXcoder_tokenize)
+    return vec
 
 
 def handle_client(conn, addr):

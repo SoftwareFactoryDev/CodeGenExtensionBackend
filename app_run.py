@@ -2,19 +2,25 @@ import argparse
 import  multiprocessing
 import uvicorn
 
+from app_create import create_app
+
 parser = argparse.ArgumentParser(description='这是一个示例程序，用于演示 argparse 的基本用法')
 parser.add_argument('--workers', default=4,help='并发数量')
 parser.add_argument('--host', default="0.0.0.0", help='服务器主机地址')
 parser.add_argument('--port', type=int, default=14514, help='服务器端口')
 args = parser.parse_args()
 
-if __name__ == "__main__":
-    uvicorn.run(
-        "app_create:app",
-        host=args.host,
-        port=args.port,
-        workers=args.workers
-    )
+app = create_app()
+uvicorn_config = uvicorn.Config(
+    app=app,
+    host=args.host,
+    port=args.port,
+    workers=args.workers,
+    log_level="info",
+)
+server = uvicorn.Server(uvicorn_config)
+print(f"启动服务器: {args.host}:{args.port}, 工作进程: {args.workers}")
+server.run()
 
 # import os
 # import sys

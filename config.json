@@ -186,9 +186,9 @@
         ]
     },
     "llm": {
-        "url": "http://10.13.1.102:8021/v1",
-        "model": "deepseek-ai/DeepSeek-R1",
-        "key": "103"
+        "url": "https://api.hunyuan.cloud.tencent.com/v1",
+        "model": "hunyuan-lite",
+        "key": "sk-nllgmS5SLhhaNBzCDl7nXOMMOA8E8wn2YQ4nNIWQGM8decLa"
     },
     "nlp_emb": {
         "url": "http://127.0.0.1:14515/embeddings"

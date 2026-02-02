@@ -1,7 +1,8 @@
-import re
+import zipfile
+from io import BytesIO
 import zipfile
 import os
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 from threading import Lock
 from copy import deepcopy
@@ -157,16 +158,13 @@ async def repo_struct(
                 "directories": [],
             }
 
-        # 配置中的 repoPath
         destination = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
         if not os.path.exists(destination):
             os.makedirs(destination, exist_ok=True)
 
-        # 克隆仓库
         repo_path, version = get_repository(request.repo_url, destination)
         logger.info(f"代码库克隆成功: {repo_path}, version={version}")
 
-        # 扫描目录结构
         directories = scan_repo_structure(repo_path)
 
         return {
@@ -196,25 +194,23 @@ async def repo_struct(
             logger.error(f"清理仓库目录失败: {repo_path}, err={e}")
 
 @router.post("/repoparse", response_model=RepoParseResponse)
-async def import_repository(
+async def repository_parse(
     request: RepoParseRequest, settings: Dict[str, Any] = Depends(get_config)
 ):
     """
     代码库解析接口
-
-    Args:
-        request (RepoParseRequest): _description_
-        settings (Dict[str, Any], optional): _description_. Defaults to Depends(get_config).
-
-    Returns:
-        _type_: _description_
     """
+
+    # 加载配置信息
     settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
+    stopword_path = settings.get("codeBaseBuild", {}).get("stopwordPath")
+
+    # 声明logger对象
     logger = deepcopy(logger_global)
     repo_path = ""
     logger.info(f"接收到代码库导入请求")
-    stopword_path = settings.get("codeBaseBuild", {}).get("stopwordPath")
 
+    # 检测执行条件
     logger.info(f"检测执行条件")
     global is_building
     if is_building:
@@ -1198,46 +1194,44 @@ async def edit_code(
 # 代码审查接口
 @router.post("/review", response_model=ReviewResponse)
 async def review(
-    file: UploadFile=File(...), request: Dict[str, Any] = Form(...), settings: Dict[str, Any] = Depends(get_config)
+    file: str = Form(...),
+    support: List[str] = Form(...),
+    start: int = Form(...),
+    end: int = Form(...), zip_file: UploadFile=File(...), settings: Dict[str, Any] = Depends(get_config)
 ):
     # 加载配置信息
     settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
+    project_dir = settings.get('CodeCheck', {}).get('projectPath','./project')
+    os.makedirs(project_dir, exist_ok=True)
 
     # 声明logger对象
     logger = deepcopy(logger_global)
     logger.info(f"接收到代码审查请求")
 
-    # 加载请求信息
-    request_dict = json.loads(request)
-    request = ReviewRequest(**request)
-    file = request.file
-    support = request.support
-    end = request.end
-    start = request.start
+    # 加载请求参数
+    logger.info(f"接收到的文件名:{file}")
+    logger.info(f"接收到的规则支持:{support}")
+    logger.info(f"接收到的审查起始行:{start}")
+    logger.info(f"接收到的审查结束行:{end}")
 
     # 加载工程目录
-    project_dir = settings.get('CodeCheck', {}).get('projectPath')
-    temp_project_file = os.path.join(project_dir, f'{datetime.now().strftime("%Y%m%d%H%M%S")}_{file.filename}')
+    temp_project_space = os.path.join(project_dir, f'{datetime.now().strftime("%Y%m%d%H%M%S")}')
+    temp_project_file = os.path.join(temp_project_space, zip_file.filename)
+    temp_project_dir = os.path.join(temp_project_space, f'{zip_file.filename.split(".")[0]}')
+    os.makedirs(temp_project_dir, exist_ok=True)
+    content = await zip_file.read()
     with open(temp_project_file, 'wb') as temp_project:
-        content = await temp_project.read()
         temp_project.write(content)
     try:
-        temp_project_dir = os.path.join(os.path.join(project_dir, f'{datetime.now().strftime("%Y%m%d%H%M%S")}_{file.filename.split('.')[0]}'))
         with zipfile.ZipFile(temp_project_file, 'r') as zip_ref:
             zip_ref.extractall(temp_project_dir)
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file")
 
     # 审查代码
-    code_file = os.path.join(temp_project_dir, file.filename)
-    code = ''
-    with open(code_file, 'r', encoding='utf-8') as file:
-        lines = file.readlines()
-        # 确保行号在有效范围内
-        start = max(0, start - 1)
-        end = min(len(lines), end)
-        code =  ''.join(lines[start:end])
-    err_list = build_in_check(code=code, support=support)
+    code_file = os.path.join(temp_project_dir ,file)
+    err_list = build_in_check(support=','.join(support), dir=temp_project_dir, file=code_file, start=start, end=end)
+
     # 审查结果解析
     type = ""
     errors = []
@@ -1250,11 +1244,15 @@ async def review(
         errors.append(deepcopy(item))
     else:
         type = "semantic"
-        errors = err_list_parse(err_list=err_list)
+        errors = err_list
+        for err in errors:
+            err["line"] = int(err["line"])-start+1
+            err["col"] = int(err["col"])
 
     # 日志记录
     logger.info(f"代码审查结果\n{type}")
     logger.info(f"代码审查详情\n{errors}")
+    rm_repo(temp_project_space)
     return {"type": type, "err": errors}
 
 
@@ -1327,6 +1325,7 @@ async def fix(request: FixRequest, settings: Dict[str, Any] = Depends(get_config
                 break
 
         snippet = code_parse(snippet)
+        logger.info(f"提示词\n {messages}")
         logger.info(f"修正后代码\n {snippet}")
         logger.info(f"完成代码修正")
         return {"result": snippet}

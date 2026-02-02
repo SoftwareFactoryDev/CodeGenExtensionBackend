@@ -131,34 +131,32 @@ def scan_repo_structure(repo_path: str) -> List[Dict[str, Any]]:
         # 忽略 .git
         dirs[:] = [d for d in dirs if d != ".git"]
 
-        # 计算当前目录相对 repo 根目录路径
         rel_dir = os.path.relpath(root, repo_path)
         if rel_dir == ".":
             rel_dir = ""
 
-        # 生成当前目录下的文件/子目录路径
         rel_files = []
         for f in files:
-            fp = os.path.join(rel_dir, f) if rel_dir else f
-            rel_files.append(to_posix(fp))
+            if f.endswith(".h") or f.endswith('.c'):
+                fp = os.path.join(rel_dir, f) if rel_dir else f
+                rel_files.append(to_posix(fp))
 
         rel_dirs = []
         for d in dirs:
             dp = os.path.join(rel_dir, d) if rel_dir else d
             rel_dirs.append(to_posix(dp))
 
-        # 排序
         rel_files.sort()
         rel_dirs.sort()
 
-        directories.append(
-            {
-                "path": to_posix(rel_dir),  # 根目录为 ""
-                "files": rel_files,
-                "dirs": rel_dirs,
-            }
-        )
+        if len(rel_files) > 0 or len(rel_dirs) > 0:
+            directories.append(
+                {
+                    "path": to_posix(rel_dir),  # 根目录为 ""
+                    "files": rel_files,
+                    "dirs": rel_dirs,
+                }
+            )
 
-    # 按 path 排序，根目录为第一条
     directories.sort(key=lambda x: x["path"])
     return directories

@@ -18,7 +18,7 @@
             "name": "API接口测试",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/test_api.py",
+            "program": "${workspaceFolder}/api_test.py",
             "console": "integratedTerminal"
         }
     ]

@@ -192,8 +192,8 @@ class FixRequest(BaseModel):
 
 
 class FixResponse(BaseModel):
-    type: str
-    err: List[ErrorInfo]
+    # type: str
+    # err: List[ErrorInfo]
     result: str
     # info: List[FixInfo]
 

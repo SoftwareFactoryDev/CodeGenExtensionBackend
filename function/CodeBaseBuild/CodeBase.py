@@ -78,7 +78,7 @@ class CodeBase:
         self.update_module_hook = update_module_desc_hook
         self.update_system_hook = update_system_desc_hook
         
-        logger.info(f"资产库初始化成功: {library_id} | 路径: {self.library_dir}")
+        self.logger.info(f"资产库初始化成功: {library_id} | 路径: {self.library_dir}")
         self._log_stats()
     
     # ==================== 数据存储接口 ====================
@@ -96,10 +96,10 @@ class CodeBase:
                     documents=[asset["description"]],
                     metadatas=[asset]
                 )
-                logger.debug(f"系统资产添加成功: {asset['id']}")
+                self.logger.debug(f"系统资产添加成功: {asset['id']}")
                 return True
             except Exception as e:
-                logger.error(f"系统资产添加失败 {asset['id']}: {str(e)}")
+                self.logger.error(f"系统资产添加失败 {asset['id']}: {str(e)}")
                 return False
     
     def add_module_asset(self, asset: Dict[str, Any]) -> bool:
@@ -115,10 +115,10 @@ class CodeBase:
                     documents=[asset["description"]],
                     metadatas=[asset]
                 )
-                logger.debug(f"模块资产添加成功: {asset['id']}")
+                self.logger.debug(f"模块资产添加成功: {asset['id']}")
                 return True
             except Exception as e:
-                logger.error(f"模块资产添加失败 {asset['id']}: {str(e)}")
+                self.logger.error(f"模块资产添加失败 {asset['id']}: {str(e)}")
                 return False
     
     def add_element_asset(self, asset: Dict[str, Any]) -> bool:
@@ -143,10 +143,10 @@ class CodeBase:
                         "_tokenized_desc": tokenized_desc  # BM25检索关键字段
                     }]
                 )
-                logger.debug(f"要素资产添加成功: {asset['id']} | 类型: {asset.get('type', 'function')}")
+                self.logger.debug(f"要素资产添加成功: {asset['id']} | 类型: {asset.get('type', 'function')}")
                 return True
             except Exception as e:
-                logger.error(f"要素资产添加失败 {asset['id']}: {str(e)}")
+                self.logger.error(f"要素资产添加失败 {asset['id']}: {str(e)}")
                 return False
     
     # ==================== 数据删除（含级联逻辑） ====================
@@ -158,7 +158,7 @@ class CodeBase:
                 # 1. 获取要素信息（删除前）
                 result = self.element_coll.get(ids=[element_id], include=["metadatas"])
                 if not result["ids"]:
-                    logger.warning(f"要素资产不存在: {element_id}")
+                    self.logger.warning(f"要素资产不存在: {element_id}")
                     return False
                 
                 meta = result["metadatas"][0]
@@ -167,7 +167,7 @@ class CodeBase:
                 
                 # 2. 删除要素
                 self.element_coll.delete(ids=[element_id])
-                logger.info(f"要素资产已删除: {element_id}")
+                self.logger.info(f"要素资产已删除: {element_id}")
                 
                 # 3. 检查模块是否还有子要素
                 module_elements = self.element_coll.get(
@@ -180,7 +180,7 @@ class CodeBase:
                 if not module_has_children:
                     # 模块无子要素，删除模块
                     self.module_coll.delete(ids=[module_id])
-                    logger.info(f"级联删除空模块: {module_id}")
+                    self.logger.info(f"级联删除空模块: {module_id}")
                 elif self.update_module_hook:
                     # 有钩子则调用更新
                     old_module = self.module_coll.get(ids=[module_id], include=["metadatas"])["metadatas"][0]
@@ -192,7 +192,7 @@ class CodeBase:
                     if new_desc and new_desc != old_module["description"]:
                         old_module["description"] = new_desc
                         self.module_coll.update(ids=[module_id], documents=[new_desc], metadatas=[old_module])
-                        logger.info(f"模块description已更新: {module_id}")
+                        self.logger.info(f"模块description已更新: {module_id}")
                 
                 # 5. 检查系统是否还有子模块/要素
                 system_modules = self.module_coll.get(where={"repo": repo_id}, include=[])
@@ -201,7 +201,7 @@ class CodeBase:
                 
                 if not system_has_children:
                     self.system_coll.delete(ids=[repo_id])
-                    logger.info(f"级联删除空系统: {repo_id}")
+                    self.logger.info(f"级联删除空系统: {repo_id}")
                 elif self.update_system_hook:
                     old_system = self.system_coll.get(ids=[repo_id], include=["metadatas"])["metadatas"][0]
                     new_desc = self.update_system_hook(
@@ -212,11 +212,11 @@ class CodeBase:
                     if new_desc and new_desc != old_system["description"]:
                         old_system["description"] = new_desc
                         self.system_coll.update(ids=[repo_id], documents=[new_desc], metadatas=[old_system])
-                        logger.info(f"系统description已更新: {repo_id}")
+                        self.logger.info(f"系统description已更新: {repo_id}")
                 
                 return True
             except Exception as e:
-                logger.error(f"删除要素资产失败 {element_id}: {str(e)}")
+                self.logger.error(f"删除要素资产失败 {element_id}: {str(e)}")
                 return False
     
     # ==================== 智能检索核心 ====================
@@ -353,7 +353,7 @@ class CodeBase:
         
         # 阶段4：逐步放松范围（先取消module_scope，再取消repo_scope）
         if module_scope:
-            logger.info("BM25+向量不足，放松module_scope限制")
+            self.logger.info("BM25+向量不足，放松module_scope限制")
             return self.search_element_assets(
                 query=original_query,
                 module_scope=None,
@@ -361,7 +361,7 @@ class CodeBase:
                 min_results=min_results
             )
         elif repo_scope:
-            logger.info("BM25+向量不足，放松repo_scope限制")
+            self.logger.info("BM25+向量不足，放松repo_scope限制")
             return self.search_element_assets(
                 query=original_query,
                 module_scope=None,
@@ -370,7 +370,7 @@ class CodeBase:
             )
         
         # 阶段5：终极兜底 - 全库检索
-        logger.warning(f"全库检索仍不足 {min_results} 条，返回现有 {len(combined)} 条")
+        self.logger.warning(f"全库检索仍不足 {min_results} 条，返回现有 {len(combined)} 条")
         return combined or self._fallback_full_search(query_text, min_results)
     
     def search_comprehensive(
@@ -389,13 +389,13 @@ class CodeBase:
         if not repo_scope:
             systems = self.search_system_assets(query_text, ratio=0.2)
             repo_scope = [s["id"] for s in systems]
-            logger.info(f"综合检索：通过系统检索扩展repo_scope: {len(repo_scope)} 个系统")
+            self.logger.info(f"综合检索：通过系统检索扩展repo_scope: {len(repo_scope)} 个系统")
         
         # 步骤2：若无module_scope，用repo_scope检索模块
         if not module_scope and repo_scope:
             modules = self.search_module_assets(query_text, repo_scope=repo_scope, ratio=0.3)
             module_scope = [m["id"] for m in modules]
-            logger.info(f"综合检索：通过模块检索扩展module_scope: {len(module_scope)} 个模块")
+            self.logger.info(f"综合检索：通过模块检索扩展module_scope: {len(module_scope)} 个模块")
         
         # 步骤3：要素级检索（使用扩展后的范围）
         return self.search_element_assets(
@@ -415,7 +415,7 @@ class CodeBase:
             if "distances" in results and results["distances"][0]:
                 clean_meta["similarity_score"] = 1.0 - results["distances"][0][i]  # 转为相似度
             formatted.append(clean_meta)
-        logger.info(f"检索返回 {len(formatted)}/{total_count} 条结果")
+        self.logger.info(f"检索返回 {len(formatted)}/{total_count} 条结果")
         return formatted
     
     def _fallback_full_search(self, query: str, n: int) -> List[Dict]:
@@ -437,7 +437,7 @@ class CodeBase:
             "模块资产": self.module_coll.count(),
             "要素资产": self.element_coll.count()
         }
-        logger.info(f"资产库统计: {json.dumps(stats, ensure_ascii=False)}")
+        self.logger.info(f"资产库统计: {json.dumps(stats, ensure_ascii=False)}")
     
     def get_library_info(self) -> Dict[str, Any]:
         """获取资产库元信息"""

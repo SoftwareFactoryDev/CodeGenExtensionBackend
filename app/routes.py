@@ -14,6 +14,8 @@ import pandas as pd
 from openai import APITimeoutError
 
 from app.models import (
+    RepoStructRequest,
+    RepoStructResponse,
     RepoParseRequest,
     RepoParseResponse,
     Asset,
@@ -69,6 +71,7 @@ from function.CodeBaseBuild.build_codebase import gen_module_sum_multy
 from function.CodeBaseBuild.build_codebase import gen_module_sum_single
 from function.CodeBaseBuild.build_codebase import gen_repo_sum_single
 from function.CodeBaseBuild.build_codebase import repo_sum_emb_single
+from function.CodeBaseBuild.util import scan_repo_structure
 from function.CodeGeneration.prompt import (
     code_gen_instruct,
     code_gen_edit,
@@ -122,6 +125,75 @@ async def get_config(settings: Dict[str, Any] = Depends(get_config)):
     )
     return {"config": settings}
 
+@router.post("/repostruct", response_model=RepoStructResponse)
+async def repo_struct(
+    request: RepoStructRequest, settings: Dict[str, Any] = Depends(get_config)
+):
+    """
+    代码仓库文件夹结构分析接口
+    """
+
+    settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
+    logger = deepcopy(logger_global)
+
+    repo_path = ""
+    global is_building
+
+    if is_building:
+        return {
+            "repo_url": request.repo_url,
+            "status": "fail",
+            "message": "服务器正在处理其他代码资产，请稍后再试",
+            "directories": [],
+        }
+
+    try:
+        is_building = True
+        if not build_lock.acquire(blocking=False):
+            return {
+                "repo_url": request.repo_url,
+                "status": "fail",
+                "message": "服务器正在处理其他代码资产，请稍后再试",
+                "directories": [],
+            }
+
+        # 配置中的 repoPath
+        destination = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
+        if not os.path.exists(destination):
+            os.makedirs(destination, exist_ok=True)
+
+        # 克隆仓库
+        repo_path, version = get_repository(request.repo_url, destination)
+        logger.info(f"代码库克隆成功: {repo_path}, version={version}")
+
+        # 扫描目录结构
+        directories = scan_repo_structure(repo_path)
+
+        return {
+            "repo_url": request.repo_url,
+            "status": "success",
+            "message": "代码仓库导入成功",
+            "directories": directories,
+        }
+
+    except Exception as e:
+        logger.error(f"/repostruct 执行失败: {e}")
+        return {
+            "repo_url": request.repo_url,
+            "status": "fail",
+            "message": f"导入失败: {str(e)}",
+            "directories": [],
+        }
+
+    finally:
+        if build_lock.locked():
+            build_lock.release()
+        is_building = False
+
+        try:
+            rm_repo(repo_path)
+        except Exception as e:
+            logger.error(f"清理仓库目录失败: {repo_path}, err={e}")
 
 @router.post("/repoparse", response_model=RepoParseResponse)
 async def import_repository(

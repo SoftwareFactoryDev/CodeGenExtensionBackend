@@ -9,6 +9,7 @@ import chromadb
 from chromadb.config import Settings
 
 from app.logger import logger_global
+
 class CodeBase:
     """
     代码资产库类
@@ -96,7 +97,7 @@ class CodeBase:
                     documents=[asset["description"]],
                     metadatas=[asset]
                 )
-                self.logger.debug(f"系统资产添加成功: {asset['id']}")
+                self.logger.info(f"系统资产添加成功: {asset['id']}")
                 return True
             except Exception as e:
                 self.logger.error(f"系统资产添加失败 {asset['id']}: {str(e)}")
@@ -115,7 +116,7 @@ class CodeBase:
                     documents=[asset["description"]],
                     metadatas=[asset]
                 )
-                self.logger.debug(f"模块资产添加成功: {asset['id']}")
+                self.logger.info(f"模块资产添加成功: {asset['id']}")
                 return True
             except Exception as e:
                 self.logger.error(f"模块资产添加失败 {asset['id']}: {str(e)}")
@@ -131,7 +132,7 @@ class CodeBase:
             raise ValueError(f"要素资产缺少必要字段: {required - asset.keys()}")
         
         # 为BM25检索预处理：添加分词后的文档（ChromaDB 0.4.22+ 支持）
-        tokenized_desc = " ".join(jieba.lcut(asset["description"]))
+        tokenized_desc = " ".join(list(jieba.cut_for_search(asset["description"])))
         
         with self.lock:
             try:
@@ -143,7 +144,7 @@ class CodeBase:
                         "_tokenized_desc": tokenized_desc  # BM25检索关键字段
                     }]
                 )
-                self.logger.debug(f"要素资产添加成功: {asset['id']} | 类型: {asset.get('type', 'function')}")
+                self.logger.info(f"要素资产添加成功: {asset['id']} | 类型: {asset.get('type', 'function')}")
                 return True
             except Exception as e:
                 self.logger.error(f"要素资产添加失败 {asset['id']}: {str(e)}")
@@ -324,7 +325,7 @@ class CodeBase:
         
         # 阶段2：检查是否满足最小数量
         if len(bm25_assets) >= min_results:
-            logger.info(f"BM25检索满足需求: {len(bm25_assets)} >= {min_results}")
+            self.logger.info(f"BM25检索满足需求: {len(bm25_assets)} >= {min_results}")
             return bm25_assets[:min_results]
         
         # 阶段3：向量检索补充（在相同范围内）

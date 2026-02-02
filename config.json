@@ -1,7 +1,7 @@
 {
     "codeBaseBuild": {
         "repoPath": "./repo",
-        "codebasePath": "./data",
+        "codebasePath": "./codebase",
         "tempCodebasePath": "./temp",
         "clangPath": "/data/zhouzl/packages/LLVM/llvm-project/build/lib/libclang.so",
         "stopwordPath": "./停用词表.txt",

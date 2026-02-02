@@ -1,5 +1,7 @@
+import os
 import json
 import re
+from typing import Dict, Any, List
 
 from copy import deepcopy
 
@@ -111,3 +113,52 @@ def module_in_repo(module_list):
         module_info += f'* 模块路径：{item["name"]}  功能描述:{item["description"]}\n'
 
     return module_info
+
+def to_posix(path: str) -> str:
+    """
+    路径分隔符统一为/,便于展示
+    """
+    return path.replace("\\", "/")
+
+def scan_repo_structure(repo_path: str) -> List[Dict[str, Any]]:
+    """
+    - path 为相对 repo 根目录的路径；根目录用空字符串 ""
+    - files/dirs 为相对 repo 根目录的路径列表
+    """
+    directories: List[Dict[str, Any]] = []
+
+    for root, dirs, files in os.walk(repo_path):
+        # 忽略 .git
+        dirs[:] = [d for d in dirs if d != ".git"]
+
+        # 计算当前目录相对 repo 根目录路径
+        rel_dir = os.path.relpath(root, repo_path)
+        if rel_dir == ".":
+            rel_dir = ""
+
+        # 生成当前目录下的文件/子目录路径
+        rel_files = []
+        for f in files:
+            fp = os.path.join(rel_dir, f) if rel_dir else f
+            rel_files.append(to_posix(fp))
+
+        rel_dirs = []
+        for d in dirs:
+            dp = os.path.join(rel_dir, d) if rel_dir else d
+            rel_dirs.append(to_posix(dp))
+
+        # 排序
+        rel_files.sort()
+        rel_dirs.sort()
+
+        directories.append(
+            {
+                "path": to_posix(rel_dir),  # 根目录为 ""
+                "files": rel_files,
+                "dirs": rel_dirs,
+            }
+        )
+
+    # 按 path 排序，根目录为第一条
+    directories.sort(key=lambda x: x["path"])
+    return directories

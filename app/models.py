@@ -1,6 +1,20 @@
 from pydantic import BaseModel
 from typing import List, Optional
 
+class RepoStructRequest(BaseModel):
+    repo_url: str
+
+class RpoDirInfo(BaseModel):
+    path : str
+    files: list[str]
+    dirs: list[str]
+
+class RepoStructResponse(BaseModel):
+
+    repo_url : str
+    status : str
+    message : str
+    directories : List[str]
 
 class RepoParseRequest(BaseModel):
     lib: str

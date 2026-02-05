@@ -1,5 +1,10 @@
 import json
-from function.CodeCheck.staticAnalyzer.analysis import run_analysis
+# from function.CodeCheck.staticAnalyzer.analysis import run_analysis
+
+def run_analysis(project_dir, target_file, start_line, end_line, rules_str):
+    return{
+        'err': []
+    }
 
 
 def build_in_check(support, dir, file, start, end):

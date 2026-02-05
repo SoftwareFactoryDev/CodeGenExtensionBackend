@@ -72,6 +72,7 @@ from function.CodeBaseBuild.build_codebase import gen_module_sum_multy
 from function.CodeBaseBuild.build_codebase import gen_module_sum_single
 from function.CodeBaseBuild.build_codebase import gen_repo_sum_single
 from function.CodeBaseBuild.build_codebase import repo_sum_emb_single
+from function.CodeBaseBuild.CodeBase import CodeBase
 from function.CodeBaseBuild.util import scan_repo_structure
 from function.CodeGeneration.prompt import (
     code_gen_instruct,
@@ -126,6 +127,7 @@ async def get_config(settings: Dict[str, Any] = Depends(get_config)):
     )
     return {"config": settings}
 
+
 @router.post("/repostruct", response_model=RepoStructResponse)
 async def repo_struct(
     request: RepoStructRequest, settings: Dict[str, Any] = Depends(get_config)
@@ -159,6 +161,7 @@ async def repo_struct(
             }
 
         destination = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
+        destination = os.path.join(destination, datetime.now().strftime("%Y%m%d%H%M%S"))
         if not os.path.exists(destination):
             os.makedirs(destination, exist_ok=True)
 
@@ -166,7 +169,6 @@ async def repo_struct(
         logger.info(f"代码库克隆成功: {repo_path}, version={version}")
 
         directories = scan_repo_structure(repo_path)
-
         return {
             "repo_url": request.repo_url,
             "status": "success",
@@ -193,6 +195,7 @@ async def repo_struct(
         except Exception as e:
             logger.error(f"清理仓库目录失败: {repo_path}, err={e}")
 
+
 @router.post("/repoparse", response_model=RepoParseResponse)
 async def repository_parse(
     request: RepoParseRequest, settings: Dict[str, Any] = Depends(get_config)
@@ -204,11 +207,17 @@ async def repository_parse(
     # 加载配置信息
     settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     stopword_path = settings.get("codeBaseBuild", {}).get("stopwordPath")
+    codebase_path = settings.get("codeBaseBuild", {}).get("codebasePath")
 
     # 声明logger对象
     logger = deepcopy(logger_global)
     repo_path = ""
     logger.info(f"接收到代码库导入请求")
+
+    # 加载请求信息
+    lib = request.lib
+    url = request.repo_url
+    mask_dir = request.mask_dir
 
     # 检测执行条件
     logger.info(f"检测执行条件")
@@ -217,11 +226,16 @@ async def repository_parse(
         logger.info(f"服务器正在处理其他代码资产，服务已拒绝")
         return {"message": f"服务器正在处理其他代码资产，请稍后再试"}
     logger.info(f"可以执行代码库导入")
+
+    # 执行代码仓库导入
     try:
+        # 代码仓库上锁
         is_building = True
         if not build_lock.acquire(blocking=False):
             logger.error(f"服务器正在处理其他代码资产，服务已拒绝")
             return {"message": f"服务器正在处理其他代码资产，请稍后再试"}
+        
+        # 克隆待导入的代码库
         logger.info(f"开始克隆代码库")
         try:
             is_building = True
@@ -237,6 +251,13 @@ async def repository_parse(
                 "message": f"代码库克隆失败，请检查当前服务器是否具备代码库克隆权限"
             }
 
+        # 初始化对应的代码资产库
+        logger.info(f"开始初始化代码资产库")
+        codebase = CodeBase(library_id=lib, persist_directory=codebase_path, embedding_func=nlp_emb_api,)
+
+        # 代码仓库查重
+        logger.info(f"开始代码仓库查重")
+        
         logger.info(f"开始提取代码资产")
         codebase_path = settings.get("codeBaseBuild", {}).get("codebasePath", "./data")
         if not (os.path.exists(codebase_path) and os.path.isdir(codebase_path)):
@@ -343,8 +364,6 @@ async def repository_parse(
     return {
         "message": f"代码库构建完成: {os.path.basename(repo_path)}, 提交版本：{version}, 系统概述：{info['description']},模块数量：{len(info['modules'])},总共解析函数数目: {len(codebase)}"
     }
-
-
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -1197,11 +1216,13 @@ async def review(
     file: str = Form(...),
     support: List[str] = Form(...),
     start: int = Form(...),
-    end: int = Form(...), zip_file: UploadFile=File(...), settings: Dict[str, Any] = Depends(get_config)
+    end: int = Form(...),
+    zip_file: UploadFile = File(...),
+    settings: Dict[str, Any] = Depends(get_config),
 ):
     # 加载配置信息
     settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
-    project_dir = settings.get('CodeCheck', {}).get('projectPath','./project')
+    project_dir = settings.get("CodeCheck", {}).get("projectPath", "./project")
     os.makedirs(project_dir, exist_ok=True)
 
     # 声明logger对象
@@ -1215,22 +1236,32 @@ async def review(
     logger.info(f"接收到的审查结束行:{end}")
 
     # 加载工程目录
-    temp_project_space = os.path.join(project_dir, f'{datetime.now().strftime("%Y%m%d%H%M%S")}')
+    temp_project_space = os.path.join(
+        project_dir, f'{datetime.now().strftime("%Y%m%d%H%M%S")}'
+    )
     temp_project_file = os.path.join(temp_project_space, zip_file.filename)
-    temp_project_dir = os.path.join(temp_project_space, f'{zip_file.filename.split(".")[0]}')
+    temp_project_dir = os.path.join(
+        temp_project_space, f'{zip_file.filename.split(".")[0]}'
+    )
     os.makedirs(temp_project_dir, exist_ok=True)
     content = await zip_file.read()
-    with open(temp_project_file, 'wb') as temp_project:
+    with open(temp_project_file, "wb") as temp_project:
         temp_project.write(content)
     try:
-        with zipfile.ZipFile(temp_project_file, 'r') as zip_ref:
+        with zipfile.ZipFile(temp_project_file, "r") as zip_ref:
             zip_ref.extractall(temp_project_dir)
     except zipfile.BadZipFile:
         raise HTTPException(status_code=400, detail="Invalid ZIP file")
 
     # 审查代码
-    code_file = os.path.join(temp_project_dir ,file)
-    err_list = build_in_check(support=','.join(support), dir=temp_project_dir, file=code_file, start=start, end=end)
+    code_file = os.path.join(temp_project_dir, file)
+    err_list = build_in_check(
+        support=",".join(support),
+        dir=temp_project_dir,
+        file=code_file,
+        start=start,
+        end=end,
+    )
 
     # 审查结果解析
     type = ""
@@ -1246,7 +1277,7 @@ async def review(
         type = "semantic"
         errors = err_list
         for err in errors:
-            err["line"] = int(err["line"])-start+1
+            err["line"] = int(err["line"]) - start + 1
             err["col"] = int(err["col"])
 
     # 日志记录
@@ -1603,3 +1634,5 @@ async def store_asset(
         "message": message,
         "assets": asset,
     }
+
+

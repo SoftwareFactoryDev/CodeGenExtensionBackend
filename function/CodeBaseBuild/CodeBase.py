@@ -10,22 +10,23 @@ from chromadb.config import Settings
 
 from app.logger import logger_global
 
+
 class CodeBase:
     """
     代码资产库类
     """
-    
+
     def __init__(
         self,
         library_id: str,
         persist_directory: str = "./codebase",
         embedding_func: Optional[Callable] = None,
         update_module_desc_hook: Optional[Callable] = None,
-        update_system_desc_hook: Optional[Callable] = None
+        update_system_desc_hook: Optional[Callable] = None,
     ):
         """
         初始化资产库
-        
+
         Args:
             library_id: 资产库唯一标识
             persist_directory: 持久化根目录
@@ -39,89 +40,90 @@ class CodeBase:
         self.base_dir = os.path.abspath(persist_directory)
         self.library_dir = os.path.join(self.base_dir, library_id)
         self.logger = deepcopy(logger_global)
-        self.logger.info(f'初始化资产库：{self.library_id}, 路径：{self.library_dir}')
+        self.logger.info(f"初始化资产库：{self.library_id}, 路径：{self.library_dir}")
         os.makedirs(self.library_dir, exist_ok=True)
-        
+
         # 添加文件锁
         self.lock_path = os.path.join(self.library_dir, ".asset_library.lock")
         self.lock = FileLock(self.lock_path, timeout=10)
-        self.logger.info(f'已添加文件锁')
-        
+        self.logger.info(f"已添加文件锁")
+
         # 初始化Embedding
         self.embedding_func = embedding_func
         self.logger.info("使用自定义Embedding函数")
-        
+
         # 初始化ChromaDB
         self.client = chromadb.PersistentClient(
-            path=self.library_dir,
-            settings=Settings(anonymized_telemetry=False)
+            path=self.library_dir, settings=Settings(anonymized_telemetry=False)
         )
         self.logger.info("初始化ChromaDB成功")
-        
+
         # 创建/获取三个Collection
         self.system_coll = self.client.get_or_create_collection(
             name="system_assets",
             embedding_function=self.embedding_func,
-            metadata={"hnsw:space": "cosine"}  # 余弦相似度
+            metadata={"hnsw:space": "cosine"},  # 余弦相似度
         )
         self.module_coll = self.client.get_or_create_collection(
             name="module_assets",
             embedding_function=self.embedding_func,
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine"},
         )
         self.element_coll = self.client.get_or_create_collection(
             name="element_assets",
             embedding_function=self.embedding_func,
-            metadata={"hnsw:space": "cosine"}
+            metadata={"hnsw:space": "cosine"},
         )
-        
+
         # 更新钩子
         self.update_module_hook = update_module_desc_hook
         self.update_system_hook = update_system_desc_hook
-        
+
         self.logger.info(f"资产库初始化成功: {library_id} | 路径: {self.library_dir}")
         self._log_stats()
-    
+
     # ==================== 数据存储接口 ====================
-    
+
     def add_system_asset(self, asset: Dict[str, Any]) -> bool:
         """添加/更新系统级资产"""
-        required = {"id", "name", "version", "description"}
+        required = {"id", "name", "version", "repo_url", "description"}
         if not required.issubset(asset.keys()):
             raise ValueError(f"系统资产缺少必要字段: {required - asset.keys()}")
-        
+
         with self.lock:
             try:
                 self.system_coll.add(
                     ids=[asset["id"]],
                     documents=[asset["description"]],
-                    metadatas=[asset]
+                    metadatas=[asset],
                 )
                 self.logger.info(f"系统资产添加成功: {asset['id']}")
                 return True
             except Exception as e:
                 self.logger.error(f"系统资产添加失败 {asset['id']}: {str(e)}")
                 return False
-    
+
+    # ==================== 数据增删操作 ====================
+
     def add_module_asset(self, asset: Dict[str, Any]) -> bool:
         """添加/更新模块级资产"""
         required = {"id", "name", "description", "path", "repo"}
         if not required.issubset(asset.keys()):
             raise ValueError(f"模块资产缺少必要字段: {required - asset.keys()}")
-        
+
         with self.lock:
             try:
                 self.module_coll.add(
                     ids=[asset["id"]],
                     documents=[asset["description"]],
-                    metadatas=[asset]
+                    metadatas=[asset],
                 )
                 self.logger.info(f"模块资产添加成功: {asset['id']}")
                 return True
             except Exception as e:
                 self.logger.error(f"模块资产添加失败 {asset['id']}: {str(e)}")
                 return False
-    
+
     def add_element_asset(self, asset: Dict[str, Any]) -> bool:
         """
         添加/更新要素级资产（自动处理中文分词用于BM25）
@@ -130,28 +132,27 @@ class CodeBase:
         required = {"id", "description", "source_code", "module", "repo"}
         if not required.issubset(asset.keys()):
             raise ValueError(f"要素资产缺少必要字段: {required - asset.keys()}")
-        
+
         # 为BM25检索预处理：添加分词后的文档（ChromaDB 0.4.22+ 支持）
         tokenized_desc = " ".join(list(jieba.cut_for_search(asset["description"])))
-        
+
         with self.lock:
             try:
                 self.element_coll.add(
                     ids=[asset["id"]],
                     documents=[asset["description"]],  # 向量检索用
-                    metadatas=[{
-                        **asset,
-                        "_tokenized_desc": tokenized_desc  # BM25检索关键字段
-                    }]
+                    metadatas=[
+                        {**asset, "_tokenized_desc": tokenized_desc}  # BM25检索关键字段
+                    ],
                 )
-                self.logger.info(f"要素资产添加成功: {asset['id']} | 类型: {asset.get('type', 'function')}")
+                self.logger.info(
+                    f"要素资产添加成功: {asset['id']} | 类型: {asset.get('type', 'function')}"
+                )
                 return True
             except Exception as e:
                 self.logger.error(f"要素资产添加失败 {asset['id']}: {str(e)}")
                 return False
-    
-    # ==================== 数据删除（含级联逻辑） ====================
-    
+
     def delete_element_asset(self, element_id: str) -> bool:
         """删除要素资产，并级联更新/删除父级资产"""
         with self.lock:
@@ -161,22 +162,21 @@ class CodeBase:
                 if not result["ids"]:
                     self.logger.warning(f"要素资产不存在: {element_id}")
                     return False
-                
+
                 meta = result["metadatas"][0]
                 module_id = meta["module"]
                 repo_id = meta["repo"]
-                
+
                 # 2. 删除要素
                 self.element_coll.delete(ids=[element_id])
                 self.logger.info(f"要素资产已删除: {element_id}")
-                
+
                 # 3. 检查模块是否还有子要素
                 module_elements = self.element_coll.get(
-                    where={"module": module_id},
-                    include=[]
+                    where={"module": module_id}, include=[]
                 )
                 module_has_children = len(module_elements["ids"]) > 0
-                
+
                 # 4. 更新模块description（通过钩子）
                 if not module_has_children:
                     # 模块无子要素，删除模块
@@ -184,54 +184,129 @@ class CodeBase:
                     self.logger.info(f"级联删除空模块: {module_id}")
                 elif self.update_module_hook:
                     # 有钩子则调用更新
-                    old_module = self.module_coll.get(ids=[module_id], include=["metadatas"])["metadatas"][0]
+                    old_module = self.module_coll.get(
+                        ids=[module_id], include=["metadatas"]
+                    )["metadatas"][0]
                     new_desc = self.update_module_hook(
-                        module_id, 
+                        module_id,
                         old_module["description"],
-                        {"deleted_element": element_id, "remaining_count": len(module_elements["ids"])}
+                        {
+                            "deleted_element": element_id,
+                            "remaining_count": len(module_elements["ids"]),
+                        },
                     )
                     if new_desc and new_desc != old_module["description"]:
                         old_module["description"] = new_desc
-                        self.module_coll.update(ids=[module_id], documents=[new_desc], metadatas=[old_module])
+                        self.module_coll.update(
+                            ids=[module_id],
+                            documents=[new_desc],
+                            metadatas=[old_module],
+                        )
                         self.logger.info(f"模块description已更新: {module_id}")
-                
+
                 # 5. 检查系统是否还有子模块/要素
-                system_modules = self.module_coll.get(where={"repo": repo_id}, include=[])
-                system_elements = self.element_coll.get(where={"repo": repo_id}, include=[])
-                system_has_children = len(system_modules["ids"]) > 0 or len(system_elements["ids"]) > 0
-                
+                system_modules = self.module_coll.get(
+                    where={"repo": repo_id}, include=[]
+                )
+                system_elements = self.element_coll.get(
+                    where={"repo": repo_id}, include=[]
+                )
+                system_has_children = (
+                    len(system_modules["ids"]) > 0 or len(system_elements["ids"]) > 0
+                )
+
                 if not system_has_children:
                     self.system_coll.delete(ids=[repo_id])
                     self.logger.info(f"级联删除空系统: {repo_id}")
                 elif self.update_system_hook:
-                    old_system = self.system_coll.get(ids=[repo_id], include=["metadatas"])["metadatas"][0]
+                    old_system = self.system_coll.get(
+                        ids=[repo_id], include=["metadatas"]
+                    )["metadatas"][0]
                     new_desc = self.update_system_hook(
                         repo_id,
                         old_system["description"],
-                        {"deleted_element": element_id, "modules_remaining": len(system_modules["ids"])}
+                        {
+                            "deleted_element": element_id,
+                            "modules_remaining": len(system_modules["ids"]),
+                        },
                     )
                     if new_desc and new_desc != old_system["description"]:
                         old_system["description"] = new_desc
-                        self.system_coll.update(ids=[repo_id], documents=[new_desc], metadatas=[old_system])
+                        self.system_coll.update(
+                            ids=[repo_id], documents=[new_desc], metadatas=[old_system]
+                        )
                         self.logger.info(f"系统description已更新: {repo_id}")
-                
+
                 return True
             except Exception as e:
                 self.logger.error(f"删除要素资产失败 {element_id}: {str(e)}")
                 return False
-    
+
     # ==================== 智能检索核心 ====================
-    
+
+    def find_system_assets_by_repo_url(self, repo_url: str) -> List[Dict[str, str]]:
+        """
+        根据Git仓库地址精准匹配系统级资产（忽略协议/分支/版本等变量）
+
+        Args:
+            repo_url: 任意格式Git仓库地址（含分支/commit/tag/认证信息等）
+
+        Returns:
+            匹配资产列表 [{"id": "...", "name": "...", "version": "..."}, ...]，无匹配返回空列表
+            注：id为系统资产唯一标识（必填字段），name/version按存储值返回（可能为空字符串）
+        """
+        if not repo_url or not isinstance(repo_url, str):
+            self.logger.warning(
+                "find_system_assets_by_repo_url: 无效输入（空或非字符串）"
+            )
+            return []
+        normalized_input = self._normalize_repo_url(repo_url)
+        if not normalized_input:
+            self.logger.warning(f"仓库地址规范化失败: '{repo_url}'")
+            return []
+        self.logger.debug(f"规范化输入: '{repo_url}' → '{normalized_input}'")
+        try:
+            all_systems = self.system_coll.get(include=["metadatas"])
+        except Exception as e:
+            self.logger.error(f"查询系统资产异常: {str(e)}", exc_info=True)
+            return []
+        results = []
+        for meta in all_systems.get("metadatas", []):
+            stored_url = meta.get("repo_url", "")
+            if not stored_url:
+                continue
+            normalized_stored = self._normalize_repo_url(stored_url)
+            if normalized_stored == normalized_input:
+                asset_id = meta.get("id", "").strip()
+                # 严格校验：系统资产id为必填字段（add_system_asset要求），空id视为数据异常
+                if not asset_id:
+                    self.logger.warning(
+                        f"匹配到仓库地址但资产id为空（数据异常），跳过 | 原始URL: {stored_url}"
+                    )
+                    continue
+                asset_info = {
+                    "id": asset_id,
+                    "name": meta.get("name", "").strip(),
+                    "version": meta.get("version", "").strip(),
+                }
+                results.append(asset_info)
+                self.logger.debug(
+                    f"匹配成功: id={asset_id}, name='{asset_info['name']}', version='{asset_info['version']}', "
+                    f"原始URL={stored_url}"
+                )
+        self.logger.info(
+            f"仓库匹配完成: 输入'{repo_url}' → 找到 {len(results)} 个系统资产"
+        )
+        return results
+
     def _prepare_query(self, query: Union[str, List[str]]) -> str:
         """统一查询输入格式"""
         if isinstance(query, list):
             return " ".join(query)
         return query.strip()
-    
+
     def search_system_assets(
-        self, 
-        query: Union[str, List[str]], 
-        ratio: float = 0.1
+        self, query: Union[str, List[str]], ratio: float = 0.1
     ) -> List[Dict[str, Any]]:
         """
         系统级资产检索：基于description的向量相似度
@@ -242,20 +317,20 @@ class CodeBase:
         query_text = self._prepare_query(query)
         total = self.system_coll.count()
         n_results = max(1, int(total * ratio))
-        
+
         results = self.system_coll.query(
             query_texts=[query_text],
             n_results=n_results,
-            include=["metadatas", "distances"]
+            include=["metadatas", "distances"],
         )
-        
+
         return self._format_results(results, total)
-    
+
     def search_module_assets(
         self,
         query: Union[str, List[str]],
         repo_scope: Optional[List[str]] = None,
-        ratio: float = 0.1
+        ratio: float = 0.1,
     ) -> List[Dict[str, Any]]:
         """
         模块级资产检索：支持系统范围过滤 + 向量检索
@@ -263,25 +338,25 @@ class CodeBase:
         query_text = self._prepare_query(query)
         # 构建过滤条件
         where = {"repo": {"$in": repo_scope}} if repo_scope else None
-        
+
         total = self.module_coll.count()
         n_results = max(1, int(total * ratio))
-        
+
         results = self.module_coll.query(
             query_texts=[query_text],
             where=where,
             n_results=n_results,
-            include=["metadatas", "distances"]
+            include=["metadatas", "distances"],
         )
-        
+
         return self._format_results(results, total)
-    
+
     def search_element_assets(
         self,
         query: Union[str, List[str]],
         module_scope: Optional[List[str]] = None,
         repo_scope: Optional[List[str]] = None,
-        min_results: int = 5
+        min_results: int = 5,
     ) -> List[Dict[str, Any]]:
         """
         要素级资产检索（核心）：
@@ -291,10 +366,10 @@ class CodeBase:
         """
         query_text = self._prepare_query(query)
         original_query = query_text
-        
+
         # 分词用于BM25（ChromaDB自动处理_tokenized_desc匹配）
         tokenized_query = " ".join(jieba.lcut(query_text))
-        
+
         # 范围过滤条件构建
         def build_where(ms, rs):
             where = {}
@@ -303,7 +378,7 @@ class CodeBase:
             elif rs:
                 where["repo"] = {"$in": rs}
             return where if where else None
-        
+
         # 阶段1：BM25初筛（关键！利用ChromaDB原生BM25）
         where_cond = build_where(module_scope, repo_scope)
         bm25_results = self.element_coll.query(
@@ -311,9 +386,9 @@ class CodeBase:
             where=where_cond,
             where_document={"$contains": tokenized_query},  # ChromaDB BM25触发条件
             n_results=min_results * 2,  # 多取一些备用
-            include=["metadatas", "distances"]
+            include=["metadatas", "distances"],
         )
-        
+
         # 提取BM25有效结果（distance在BM25中代表相关性分数，越高越好）
         bm25_assets = []
         if bm25_results["ids"][0]:
@@ -322,25 +397,29 @@ class CodeBase:
                 # 过滤掉_tokenized_desc（内部字段）
                 clean_meta = {k: v for k, v in meta.items() if not k.startswith("_")}
                 bm25_assets.append(clean_meta)
-        
+
         # 阶段2：检查是否满足最小数量
         if len(bm25_assets) >= min_results:
             self.logger.info(f"BM25检索满足需求: {len(bm25_assets)} >= {min_results}")
             return bm25_assets[:min_results]
-        
+
         # 阶段3：向量检索补充（在相同范围内）
         vector_results = self.element_coll.query(
             query_texts=[query_text],
             where=where_cond,
             n_results=min_results,
-            include=["metadatas"]
+            include=["metadatas"],
         )
-        
-        vector_assets = [
-            {k: v for k, v in meta.items() if not k.startswith("_")}
-            for meta in vector_results["metadatas"][0]
-        ] if vector_results["metadatas"][0] else []
-        
+
+        vector_assets = (
+            [
+                {k: v for k, v in meta.items() if not k.startswith("_")}
+                for meta in vector_results["metadatas"][0]
+            ]
+            if vector_results["metadatas"][0]
+            else []
+        )
+
         # 合并去重（BM25优先）
         seen_ids = set()
         combined = []
@@ -348,10 +427,10 @@ class CodeBase:
             if asset["id"] not in seen_ids:
                 seen_ids.add(asset["id"])
                 combined.append(asset)
-        
+
         if len(combined) >= min_results:
             return combined[:min_results]
-        
+
         # 阶段4：逐步放松范围（先取消module_scope，再取消repo_scope）
         if module_scope:
             self.logger.info("BM25+向量不足，放松module_scope限制")
@@ -359,7 +438,7 @@ class CodeBase:
                 query=original_query,
                 module_scope=None,
                 repo_scope=repo_scope,
-                min_results=min_results
+                min_results=min_results,
             )
         elif repo_scope:
             self.logger.info("BM25+向量不足，放松repo_scope限制")
@@ -367,79 +446,157 @@ class CodeBase:
                 query=original_query,
                 module_scope=None,
                 repo_scope=None,
-                min_results=min_results
+                min_results=min_results,
             )
-        
+
         # 阶段5：终极兜底 - 全库检索
-        self.logger.warning(f"全库检索仍不足 {min_results} 条，返回现有 {len(combined)} 条")
+        self.logger.warning(
+            f"全库检索仍不足 {min_results} 条，返回现有 {len(combined)} 条"
+        )
         return combined or self._fallback_full_search(query_text, min_results)
-    
+
     def search_comprehensive(
         self,
         query: Union[str, List[str]],
         module_scope: Optional[List[str]] = None,
         repo_scope: Optional[List[str]] = None,
-        min_element_results: int = 5
+        min_element_results: int = 5,
     ) -> List[Dict[str, Any]]:
         """
         综合检索：系统→模块→要素 三级缩小范围
         """
         query_text = self._prepare_query(query)
-        
+
         # 步骤1：若无repo_scope，先检索相关系统
         if not repo_scope:
             systems = self.search_system_assets(query_text, ratio=0.2)
             repo_scope = [s["id"] for s in systems]
-            self.logger.info(f"综合检索：通过系统检索扩展repo_scope: {len(repo_scope)} 个系统")
-        
+            self.logger.info(
+                f"综合检索：通过系统检索扩展repo_scope: {len(repo_scope)} 个系统"
+            )
+
         # 步骤2：若无module_scope，用repo_scope检索模块
         if not module_scope and repo_scope:
-            modules = self.search_module_assets(query_text, repo_scope=repo_scope, ratio=0.3)
+            modules = self.search_module_assets(
+                query_text, repo_scope=repo_scope, ratio=0.3
+            )
             module_scope = [m["id"] for m in modules]
-            self.logger.info(f"综合检索：通过模块检索扩展module_scope: {len(module_scope)} 个模块")
-        
+            self.logger.info(
+                f"综合检索：通过模块检索扩展module_scope: {len(module_scope)} 个模块"
+            )
+
         # 步骤3：要素级检索（使用扩展后的范围）
         return self.search_element_assets(
             query=query_text,
             module_scope=module_scope,
             repo_scope=repo_scope,
-            min_results=min_element_results
+            min_results=min_element_results,
         )
-    
+
     # ==================== 辅助方法 ====================
-    
+
     def _format_results(self, results: Dict, total_count: int) -> List[Dict]:
         """标准化检索结果格式"""
         formatted = []
         for i, meta in enumerate(results.get("metadatas", [[]])[0]):
             clean_meta = {k: v for k, v in meta.items() if not k.startswith("_")}
             if "distances" in results and results["distances"][0]:
-                clean_meta["similarity_score"] = 1.0 - results["distances"][0][i]  # 转为相似度
+                clean_meta["similarity_score"] = (
+                    1.0 - results["distances"][0][i]
+                )  # 转为相似度
             formatted.append(clean_meta)
         self.logger.info(f"检索返回 {len(formatted)}/{total_count} 条结果")
         return formatted
-    
+
     def _fallback_full_search(self, query: str, n: int) -> List[Dict]:
         """兜底全库检索"""
         results = self.element_coll.query(
-            query_texts=[query],
-            n_results=n,
-            include=["metadatas"]
+            query_texts=[query], n_results=n, include=["metadatas"]
         )
-        return [
-            {k: v for k, v in meta.items() if not k.startswith("_")}
-            for meta in results["metadatas"][0]
-        ] if results["metadatas"][0] else []
-    
+        return (
+            [
+                {k: v for k, v in meta.items() if not k.startswith("_")}
+                for meta in results["metadatas"][0]
+            ]
+            if results["metadatas"][0]
+            else []
+        )
+
     def _log_stats(self):
         """打印资产库统计信息"""
         stats = {
             "系统资产": self.system_coll.count(),
             "模块资产": self.module_coll.count(),
-            "要素资产": self.element_coll.count()
+            "要素资产": self.element_coll.count(),
         }
         self.logger.info(f"资产库统计: {json.dumps(stats, ensure_ascii=False)}")
-    
+
+    def _normalize_repo_url(self, url: str) -> str:
+        """
+        规范化Git仓库URL，提取唯一仓库标识（主机+路径核心），忽略协议/认证/端口/分支等变量
+
+        Args:
+            url (str): Git仓库URL
+
+        Returns:
+            str: 规范化后的仓库标识
+        """
+        if not url or not isinstance(url, str):
+            return ""
+        url = url.strip().lower()
+        # 1. 移除协议前缀（覆盖所有常见协议）
+        for prefix in ["ssh://", "git://", "http://", "https://", "file://"]:
+            if url.startswith(prefix):
+                url = url[len(prefix) :]
+                break
+        # 2. 处理SSH简写格式（git@host:path → host/path）
+        if url.startswith("git@"):
+            url = url[4:].replace(":", "/", 1)  # 仅替换首个冒号
+        # 3. 分离权威部分（主机/端口/认证）与路径
+        if "/" in url:
+            authority, path = url.split("/", 1)
+        else:
+            authority, path = url, ""
+        # 4. 清理权威部分：移除认证信息 + 端口
+        if "@" in authority:
+            authority = authority.split("@", 1)[-1]  # 保留@后内容（防路径含@干扰）
+        if ":" in authority:
+            host_port = authority.rsplit(":", 1)
+            if len(host_port) == 2 and host_port[1].isdigit():  # 仅当端口为纯数字时移除
+                authority = host_port[0]
+        # 5. 重组URL
+        url = f"{authority}/{path}" if path else authority
+        url = url.rstrip("/")
+        # 6. 移除仓库标识干扰项
+        if url.endswith(".git"):
+            url = url[:-4]
+        elif ".git/" in url:
+            url = url.split(".git/", 1)[0]
+        # 7. 移除查询参数与锚点
+        url = url.split("?")[0].split("#")[0]
+        # 8. 截断分支/commit/tag等路径后缀（按优先级匹配）
+        path_separators = [
+            "/tree/",
+            "/commit/",
+            "/blob/",
+            "/releases/tag/",
+            "/tags/",
+            "/src/",
+            "/-/tree/",
+            "/-/commit/",
+            "/-/blob/",
+            "/archive/",
+            "/raw/",
+            "/refs/heads/",
+            "/refs/tags/",
+            "/-/archive/",
+        ]
+        for sep in path_separators:
+            if sep in url:
+                url = url.split(sep, 1)[0]
+                break
+        return url.rstrip("/")
+
     def get_library_info(self) -> Dict[str, Any]:
         """获取资产库元信息"""
         return {
@@ -448,7 +605,7 @@ class CodeBase:
             "stats": {
                 "system_count": self.system_coll.count(),
                 "module_count": self.module_coll.count(),
-                "element_count": self.element_coll.count()
+                "element_count": self.element_coll.count(),
             },
-            "embedding_model": "custom" if hasattr(self, 'custom_emb') else "BGE-zh"
+            "embedding_model": "custom" if hasattr(self, "custom_emb") else "BGE-zh",
         }

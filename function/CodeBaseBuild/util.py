@@ -168,135 +168,107 @@ def scan_repo_structure(repo_path: str) -> List[Dict[str, Any]]:
     directories.sort(key=lambda x: x["path"])
     return directories
 
-
-def get_changed_files_and_dirs(
+def get_repo_change_sets(
     old_repo_url: str,
     old_commit: str,
-    new_repo_url: str,
-    new_commit: str,
-    temp_dir: Optional[str] = None,
-    keep_temp: bool = False
-) -> Tuple[List[Tuple[str, str]], Set[str]]:
+    new_repo_local_path: str,
+    new_commit: str = "HEAD"
+) -> Dict[str, List[str]]:
     """
-    获取两个 Git 仓库指定 Commit 之间的变更文件与目录（仅下载必要对象，节约克隆成本）
+    精准返回新旧仓库各自涉及变更的文件与目录（严格按文件存在性分离）
     
     Args:
-        old_repo_url: 旧版本仓库 URL
-        old_commit: 旧版本 Commit 哈希（完整或足够唯一前缀）
-        new_repo_url: 新版本仓库 URL
-        new_commit: 新版本 Commit 哈希
-        temp_dir: 可选，指定临时工作目录（调试用）
-        keep_temp: 是否保留临时目录（默认 False）
-    
+        old_repo_url (str): 旧仓库的 URL
+        old_commit (str): 旧仓库的 Commit
+        new_repo_local_path (str): 新仓库的本地路径
+        new_commit (str, optional): 新仓库的 Commit. Defaults to "HEAD".
+
     Returns:
-        Tuple[
-            List[Tuple[str, str]]: 变更文件列表 [(状态, 路径), ...] 
-                状态: 'A'=新增, 'M'=修改, 'D'=删除, 'R'=重命名(拆分为D+A), 'C'=复制(拆分为保留+新增)
-            Set[str]: 变更文件所在目录集合（相对路径，根目录用'.'表示）
-        ]
-    
-    Raises:
-        RuntimeError: Git 未安装或命令执行失败
-        ValueError: Commit 哈希格式无效
+        old_changed_files(List[str]) : 旧Commit中存在且变更的文件（M/D/T状态）
+        old_changed_directories(List[str]) : 对应目录（根目录用'.'表示）
+        new_changed_files(List[str]) : 新Commit中存在且变更的文件（M/A/T状态）
+        new_changed_directories(List[str]) : 对应目录
     """
-    # === 1. 环境校验 ===
+    # ===== 验证仓库路径 =====
+    if not os.path.isdir(new_repo_local_path):
+        raise ValueError(f"路径不存在: {new_repo_local_path}")
+    if not os.path.isdir(os.path.join(new_repo_local_path, ".git")):
+        raise ValueError(f"非有效 Git 仓库: {new_repo_local_path}")
+    
+    def _git(cmd: List[str], error_msg: str) -> str:
+        try:
+            result = subprocess.run(
+                ["git"] + cmd,
+                cwd=new_repo_local_path,
+                capture_output=True,
+                text=True,
+                timeout=180,
+                check=True
+            )
+            return result.stdout.strip()
+        except FileNotFoundError:
+            raise RuntimeError("系统未安装 Git。请安装 Git 并确保在 PATH 中。")
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"Git 命令超时: {' '.join(cmd)}")
+        except subprocess.CalledProcessError as e:
+            stderr = (e.stderr or e.stdout or "").strip()
+            hints = []
+            if "Authentication" in stderr or "Permission denied" in stderr:
+                hints.append("请检查 SSH 密钥或 Git 凭据配置")
+            if f"unknown revision '{old_commit}'" in stderr:
+                hints.append(f"尝试从 {old_repo_url} 拉取该 Commit")
+            raise RuntimeError(
+                f"{error_msg}\nGit 错误: {stderr}" + 
+                (f"\n提示: {'; '.join(hints)}" if hints else "")
+            )
+    
+    _git(["rev-parse", "--verify", f"{new_commit}^{{commit}}"], 
+         f"新 Commit 不存在于本地仓库: {new_commit}")
+    
     try:
-        subprocess.run(
-            ["git", "--version"],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+        _git(["rev-parse", "--verify", f"{old_commit}^{{commit}}"], "")
+    except RuntimeError:
+        _git(
+            ["fetch", "--depth=1", "--no-tags", old_repo_url, old_commit],
+            f"无法从 {old_repo_url} 拉取旧 Commit {old_commit}"
         )
-    except (FileNotFoundError, subprocess.CalledProcessError):
-        raise RuntimeError("Git 未安装或不在系统 PATH 中，请先安装 Git")
-    
-    if not (old_commit.strip() and new_commit.strip()):
-        raise ValueError("Commit 哈希不能为空")
-    
-    # === 2. 临时目录管理 ===
-    cleanup_needed = False
-    working_dir = temp_dir
-    if working_dir is None:
-        working_dir = tempfile.mkdtemp(prefix="git_diff_")
-        cleanup_needed = True
-    else:
-        os.makedirs(working_dir, exist_ok=True)
     
     try:
-        # === 3. 初始化最小化仓库 ===
-        subprocess.run(["git", "init", "-q"], cwd=working_dir, check=True, capture_output=True)
-        # 避免 Git 警告（非必须但提升稳定性）
-        subprocess.run(["git", "config", "user.email", "ci-bot@local"], cwd=working_dir, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "CI Bot"], cwd=working_dir, capture_output=True)
-        
-        # === 4. 精准获取目标 Commit（核心：--depth=1 + 直接指定 Commit）===
-        # 优势：仅下载目标 Commit 及其树对象，避免拉取整个分支历史
-        remotes = [("old_remote", old_repo_url, old_commit), ("new_remote", new_repo_url, new_commit)]
-        for remote_name, url, commit in remotes:
-            subprocess.run(["git", "remote", "add", remote_name, url], cwd=working_dir, check=True, capture_output=True)
-            # --filter=blob:none 进一步减少下载（仅元数据，无文件内容），Git 2.19+ 支持
-            fetch_cmd = [
-                "git", "fetch", "--depth=1", "--filter=blob:none",
-                remote_name, commit
-            ]
-            result = subprocess.run(fetch_cmd, cwd=working_dir, capture_output=True, text=True)
-            if result.returncode != 0:
-                # 回退方案：部分旧版 Git 不支持 --filter，移除后重试
-                if "--filter=blob:none" in result.stderr:
-                    fetch_cmd = ["git", "fetch", "--depth=1", remote_name, commit]
-                    subprocess.run(fetch_cmd, cwd=working_dir, check=True, capture_output=True)
-                else:
-                    raise RuntimeError(f"Fetch 失败 ({remote_name}): {result.stderr.strip()}")
-        
-        # === 5. 获取差异（仅文件路径与状态）===
-        diff_result = subprocess.run(
-            ["git", "diff", "--name-status", old_commit, new_commit],
-            cwd=working_dir,
-            check=True,
-            capture_output=True,
-            text=True
+        diff_raw = _git(
+            ["diff", "--name-status", "--no-renames", old_commit, new_commit],
+            "计算差异失败（确认两 Commit 属于同一项目历史）"
         )
-        
-        # === 6. 智能解析 diff 输出 ===
-        changed_files = []
-        for line in diff_result.stdout.strip().splitlines():
-            if not line.strip():
-                continue
-            parts = line.split("\t")
-            if len(parts) < 2:
-                continue
-            
-            status_raw = parts[0].strip()
-            main_status = status_raw[0]
-            
-            # 处理单路径变更 (A, M, D, T...)
-            if main_status in {"A", "M", "D", "T"} and len(parts) >= 2:
-                path = parts[1].strip().strip('"')
-                changed_files.append((main_status, path))
-            
-            # 处理重命名/复制 (R/C + 相似度 + 旧路径 + 新路径)
-            elif main_status in {"R", "C"} and len(parts) >= 3:
-                old_path = parts[1].strip().strip('"')
-                new_path = parts[2].strip().strip('"')
-                # 语义拆分：重命名 = 删除旧路径 + 新增新路径；复制 = 保留旧路径(视为M) + 新增新路径
-                changed_files.append(("D" if main_status == "R" else "M", old_path))
-                changed_files.append(("A", new_path))
-        
-        # === 7. 提取变更目录（仅直接父目录，避免冗余）===
-        changed_dirs = set()
-        for _, path in changed_files:
-            dir_path = os.path.dirname(path) or "."  # 根目录文件归为"."
-            changed_dirs.add(dir_path)
-        
-        return changed_files, changed_dirs
+    except RuntimeError as e:
+        if "--no-renames" in str(e) and "unknown option" in str(e).lower():
+            # 兼容旧版 Git (<2.9)：降级使用基础命令（重命名视为删除+新增）
+            diff_raw = _git(
+                ["diff", "--name-status", old_commit, new_commit],
+                "计算差异失败（确认两 Commit 属于同一项目历史）"
+            )
+        else:
+            raise
     
-    except subprocess.CalledProcessError as e:
-        stderr_msg = e.stderr.strip() if e.stderr else "Unknown error"
-        raise RuntimeError(f"Git 命令执行失败: {stderr_msg}\nCommand: {' '.join(e.cmd)}") from e
-    finally:
-        # 安全清理临时资源
-        if cleanup_needed and not keep_temp and os.path.exists(working_dir):
-            try:
-                shutil.rmtree(working_dir)
-            except Exception as cleanup_err:
-                print(f"警告：临时目录清理失败 ({working_dir}): {cleanup_err}", file=sys.stderr)
+    old_files, new_files = set(), set()
+    for line in diff_raw.splitlines():
+        if not line.strip():
+            continue
+        parts = line.split("\t", 1)
+        if len(parts) < 2:
+            continue
+        status, filepath = parts[0].strip()[0], parts[1].strip()
+        
+        if status in ("M", "D", "T"):
+            old_files.add(filepath)
+        if status in ("M", "A", "T"):
+            new_files.add(filepath)
+    
+    def _extract_dirs(files: set) -> List[str]:
+        dirs = {os.path.dirname(f) or "." for f in files}
+        return sorted(dirs)
+    
+    return {
+        "old_changed_files": sorted(old_files),
+        "old_changed_directories": _extract_dirs(old_files),
+        "new_changed_files": sorted(new_files),
+        "new_changed_directories": _extract_dirs(new_files)
+    }

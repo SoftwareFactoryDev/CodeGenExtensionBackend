@@ -31,81 +31,7 @@ from app.logger import logger_global
 thread_local = threading.local()
 
 
-async def repo_parse_multy(repo_path, codebase_path, version, max_workers=4):
-    def process_file(c_file, repo_path, c_parser):
-        logger = deepcopy(logger_global)
-        module = os.path.dirname(os.path.relpath(c_file, repo_path))
-        if module.strip() == "":
-            module = "根模块"
-        file_path = os.path.relpath(c_file, repo_path)
-        try:
-            c_parser.parse_file(c_file)
-            for func in c_parser.functions:
-                func["file_path"] = file_path
-                func["module"] = module
-            return deepcopy(c_parser.functions)
-        except Exception as e:
-            logger.error(f"解析文件 {c_file} 时发生异常: {e}")
-        return []
-
-    logger = deepcopy(logger_global)
-    repo_name = os.path.basename(repo_path)
-    asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}.csv")
-    info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}.json")
-
-    if os.path.exists(asset_path) and os.path.exists(info_path):
-        return f"代码库{os.path.basename(repo_path)}(Commit版本：{version})已存在，跳过提取代码资产步骤，仅进行代码库功能描述生成。"
-
-    for file in os.listdir(codebase_path):
-        if repo_name in file:
-            os.remove(os.path.join(codebase_path, file))
-    # 获取所有文件
-    c_files = glob.glob(f"{repo_path}/**/*.c", recursive=True)
-    h_files = glob.glob(f"{repo_path}/**/*.h", recursive=True)
-    all_files = c_files + h_files
-
-    # 使用线程池处理文件
-    loop = asyncio.get_event_loop()
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # 创建任务列表
-        tasks = []
-        for index, c_file in enumerate(all_files):
-            logger.info(f"正在处理代码文件 No{index+1}:{c_file}")
-            c_parser = CParser()
-            task = loop.run_in_executor(
-                executor,
-                lambda f=c_file, p=repo_path, parser=c_parser: asyncio.run(
-                    process_file(f, p, parser)
-                ),
-            )
-            tasks.append(task)
-        results = await asyncio.gather(*tasks)
-        asset_list = []
-        module_list = set()
-        for result in results:
-            if result:
-                asset_list.extend(result)
-                for item in result:
-                    module_list.add(item["module"])
-
-        info = {
-            "name": repo_name,
-            "version": version,
-            "description": "",
-            "modules": [{"name": module, "description": ""} for module in module_list],
-        }
-
-        with open(info_path, "w", encoding="utf-8") as f:
-            json.dump(info, f, ensure_ascii=False, indent=4)
-
-        df = pd.DataFrame(asset_list)
-        df["repo_name"] = repo_name
-        df.to_csv(asset_path, index=False, encoding="utf-8-sig")
-
-        return f"代码库{os.path.basename(repo_path)}_{version}解析完成。"
-
-
-def repo_parse_single(repo_path, codebase_path, version, add=False):
+def repo_parse_single(repo_path, version,asset_path, info_path, repeat_within={}, mask_dirs=[]):
     """
     解析单个代码仓库，提取代码资产并生成代码库信息
 
@@ -124,18 +50,10 @@ def repo_parse_single(repo_path, codebase_path, version, add=False):
     # 获取代码仓库名称（从路径中提取）
     repo_name = os.path.basename(repo_path)
 
-    # 构建代码资产文件和信息文件的存储路径
-    asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}.csv")
-    info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}.json")
     # 检查是否已经存在解析结果
     if os.path.exists(asset_path) and os.path.exists(info_path):
         result = f"代码库{os.path.basename(repo_path)}(Commit版本：{version})已存在，跳过提取代码资产步骤，仅进行代码库功能描述生成。"
     else:
-        # 非增量模式下，删除旧的解析结果
-        if not add:
-            for file in os.listdir(codebase_path):
-                if repo_name in file:
-                    os.remove(os.path.join(codebase_path, file))
 
         # 获取所有C语言源文件和头文件
         c_files = glob.glob(f"{repo_path}/**/*.c", recursive=True)

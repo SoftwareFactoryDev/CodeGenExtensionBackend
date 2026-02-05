@@ -90,10 +90,10 @@ class CodeEmbedding:
         计算文本的embedding向量
         
         Args:
-            texts: 单个代码片段
+            code: 单个代码片段
             
         Returns:
-            单个文本的embedding向量或文本列表的embedding向量列表
+            单个代码的embedding向量
         """
         logger = deepcopy(logger_global)
         headers = {"Content-Type": "application/json"}

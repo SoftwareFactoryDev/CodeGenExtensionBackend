@@ -103,8 +103,6 @@ class CodeBase:
                 self.logger.error(f"系统资产添加失败 {asset['id']}: {str(e)}")
                 return False
 
-    # ==================== 数据增删操作 ====================
-
     def add_module_asset(self, asset: Dict[str, Any]) -> bool:
         """添加/更新模块级资产"""
         required = {"id", "name", "description", "path", "repo"}
@@ -241,63 +239,125 @@ class CodeBase:
             except Exception as e:
                 self.logger.error(f"删除要素资产失败 {element_id}: {str(e)}")
                 return False
+        
+    def _delete_system_asset_and_related(self, system_id: str) -> bool:
+        """
+        删除系统资产及其所有相关的模块和要素资产
+        
+        Args:
+            system_id: 系统资产ID
+            
+        Returns:
+            bool: 删除是否成功
+        """
+        try:
+            modules = self.module_coll.get(
+                where={"repo": system_id},
+                include=["metadatas"]
+            )
+
+            # 2. 删除每个模块的所有要素
+            for module_meta in modules.get("metadatas", []):
+                module_id = module_meta["id"]
+                elements = self.element_coll.get(
+                    where={"module": module_id},
+                    include=["metadatas"]
+                )
+                # 删除要素
+                if elements["ids"]:
+                    self.element_coll.delete(ids=elements["ids"])
+                    self.logger.info(f"删除模块 {module_id} 的 {len(elements['ids'])} 个要素")
+                # 删除模块
+                self.module_coll.delete(ids=[module_id])
+                self.logger.info(f"删除模块: {module_id}")
+            # 3. 删除系统资产
+            self.system_coll.delete(ids=[system_id])
+            self.logger.info(f"删除系统资产: {system_id}")
+            return True
+        except Exception as e:
+            self.logger.error(f"删除系统资产及其相关数据失败 {system_id}: {str(e)}")
+            return False
 
     # ==================== 智能检索核心 ====================
 
     def find_system_assets_by_repo_url(self, repo_url: str) -> List[Dict[str, str]]:
         """
-        根据Git仓库地址精准匹配系统级资产（忽略协议/分支/版本等变量）
+        根据Git仓库地址精准匹配系统级资产，并进行去重处理
+        保留commit更晚的资产，删除较早的资产及其相关数据
 
         Args:
             repo_url: 任意格式Git仓库地址（含分支/commit/tag/认证信息等）
 
         Returns:
-            匹配资产列表 [{"id": "...", "name": "...", "version": "..."}, ...]，无匹配返回空列表
-            注：id为系统资产唯一标识（必填字段），name/version按存储值返回（可能为空字符串）
+            去重后的检索结果
         """
         if not repo_url or not isinstance(repo_url, str):
-            self.logger.warning(
-                "find_system_assets_by_repo_url: 无效输入（空或非字符串）"
-            )
+            self.logger.warning("find_system_assets_by_repo_url: 无效输入（空或非字符串）")
             return []
+
         normalized_input = self._normalize_repo_url(repo_url)
         if not normalized_input:
             self.logger.warning(f"仓库地址规范化失败: '{repo_url}'")
             return []
+
         self.logger.debug(f"规范化输入: '{repo_url}' → '{normalized_input}'")
+
         try:
-            all_systems = self.system_coll.get(include=["metadatas"])
-        except Exception as e:
-            self.logger.error(f"查询系统资产异常: {str(e)}", exc_info=True)
-            return []
-        results = []
-        for meta in all_systems.get("metadatas", []):
-            stored_url = meta.get("repo_url", "")
-            if not stored_url:
-                continue
-            normalized_stored = self._normalize_repo_url(stored_url)
-            if normalized_stored == normalized_input:
-                asset_id = meta.get("id", "").strip()
-                # 严格校验：系统资产id为必填字段（add_system_asset要求），空id视为数据异常
-                if not asset_id:
-                    self.logger.warning(
-                        f"匹配到仓库地址但资产id为空（数据异常），跳过 | 原始URL: {stored_url}"
-                    )
-                    continue
-                asset_info = {
-                    "id": asset_id,
-                    "name": meta.get("name", "").strip(),
-                    "version": meta.get("version", "").strip(),
-                }
-                results.append(asset_info)
-                self.logger.debug(
-                    f"匹配成功: id={asset_id}, name='{asset_info['name']}', version='{asset_info['version']}', "
-                    f"原始URL={stored_url}"
+            with self.lock:
+                # 获取所有匹配的系统资产
+                all_systems = self.system_coll.get(include=["metadatas"])
+                matched_assets = []
+                
+                for meta in all_systems.get("metadatas", []):
+                    stored_url = meta.get("repo_url", "")
+                    if not stored_url:
+                        continue
+                        
+                    normalized_stored = self._normalize_repo_url(stored_url)
+                    if normalized_stored == normalized_input:
+                        asset_id = meta.get("id", "").strip()
+                        if not asset_id:
+                            self.logger.warning(f"匹配到仓库地址但资产id为空，跳过 | 原始URL: {stored_url}")
+                            continue
+                            
+                        matched_assets.append({
+                            "id": asset_id,
+                            "name": meta.get("name", "").strip(),
+                            "version": meta.get("version", "").strip(),
+                            "commit": meta.get("commit", "").strip(),
+                            "repo_url": meta.get("repo_url", "").strip()
+                        })
+
+                if not matched_assets:
+                    self.logger.info(f"未找到匹配的系统资产: {repo_url}")
+                    return []
+
+                # 如果只有一个匹配项，直接返回
+                if len(matched_assets) == 1:
+                    self.logger.info(f"找到唯一匹配的系统资产: {matched_assets[0]['id']}")
+                    return [self._format_asset_info(matched_assets[0])]
+
+                matched_assets.sort(key=lambda x: x["commit"], reverse=True)
+
+                # 保留最新的资产
+                latest_asset = matched_assets[0]
+                outdated_assets = matched_assets[1:]
+
+                # 删除较早的资产及其相关数据
+                for asset in outdated_assets:
+                    self._delete_system_asset_and_related(asset["id"])
+
+                self.logger.info(
+                    f"去重完成: 保留最新资产 {latest_asset['id']} "
+                    f"(commit: {latest_asset['commit']})，"
+                    f"删除 {len(outdated_assets)} 个较早资产"
                 )
-        self.logger.info(
-            f"仓库匹配完成: 输入'{repo_url}' → 找到 {len(results)} 个系统资产"
-        )
-        return results
+
+                return latest_asset
+
+        except Exception as e:
+            self.logger.error(f"处理系统资产时发生错误: {str(e)}", exc_info=True)
+            return []
 
     def _prepare_query(self, query: Union[str, List[str]]) -> str:
         """统一查询输入格式"""

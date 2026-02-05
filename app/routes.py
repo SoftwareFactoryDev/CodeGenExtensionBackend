@@ -74,6 +74,7 @@ from function.CodeBaseBuild.build_codebase import gen_repo_sum_single
 from function.CodeBaseBuild.build_codebase import repo_sum_emb_single
 from function.CodeBaseBuild.CodeBase import CodeBase
 from function.CodeBaseBuild.util import scan_repo_structure
+from function.CodeBaseBuild.util import get_repo_change_sets
 from function.CodeGeneration.prompt import (
     code_gen_instruct,
     code_gen_edit,
@@ -90,7 +91,7 @@ from function.CodeBaseBuild.util import gen_code_sum
 from function.CodeBaseBuild.build_codebase import string_parse_new
 from function.CodeBaseBuild.build_codebase import string_parse_old
 from app.logger import logger_global
-from function.CodeBaseBuild.llm_gen import nlp_emb_api
+from function.CodeBaseBuild.llm_gen import NLPEmbedding
 from function.CodeCheck.util import err_list_parse
 from function.CodeCheck.code_check import build_in_check
 
@@ -208,6 +209,7 @@ async def repository_parse(
     settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     stopword_path = settings.get("codeBaseBuild", {}).get("stopwordPath")
     codebase_path = settings.get("codeBaseBuild", {}).get("codebasePath")
+    emb_url = settings.get("nlp_emb", {}).get("url")
 
     # 声明logger对象
     logger = deepcopy(logger_global)
@@ -216,7 +218,7 @@ async def repository_parse(
 
     # 加载请求信息
     lib = request.lib
-    url = request.repo_url
+    repo_url = request.repo_url
     mask_dir = request.mask_dir
 
     # 检测执行条件
@@ -227,22 +229,26 @@ async def repository_parse(
         return {"message": f"服务器正在处理其他代码资产，请稍后再试"}
     logger.info(f"可以执行代码库导入")
 
-    # 执行代码仓库导入
+    # 声明必要的变量
+    repeat_within = []
+    old_system_asset = None
+    repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
+    max_workers = settings.get("codeBaseBuild", {}).get("max_workers", 1)
+    emb_func = NLPEmbedding(emb_url)
     try:
         # 代码仓库上锁
         is_building = True
         if not build_lock.acquire(blocking=False):
             logger.error(f"服务器正在处理其他代码资产，服务已拒绝")
             return {"message": f"服务器正在处理其他代码资产，请稍后再试"}
-        
+
         # 克隆待导入的代码库
         logger.info(f"开始克隆代码库")
         try:
             is_building = True
-            distination = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
-            if not os.path.exists(distination):
-                os.makedirs(distination)
-            repo_path, version = get_repository(request.repo_url, distination)
+            if not os.path.exists(repo_path):
+                os.makedirs(repo_path)
+            repo_path, version = get_repository(request.repo_url, repo_path)
             logger.info(f"代码库克隆成功")
         except Exception as e:
             logger.error(f"代码库克隆失败\n{e}")
@@ -253,21 +259,37 @@ async def repository_parse(
 
         # 初始化对应的代码资产库
         logger.info(f"开始初始化代码资产库")
-        codebase = CodeBase(library_id=lib, persist_directory=codebase_path, embedding_func=nlp_emb_api,)
+        codebase = CodeBase(
+            library_id=lib, persist_directory=codebase_path, embedding_func=emb_func
+        )
 
         # 代码仓库查重
         logger.info(f"开始代码仓库查重")
-        
-        logger.info(f"开始提取代码资产")
-        codebase_path = settings.get("codeBaseBuild", {}).get("codebasePath", "./data")
+        old_system_asset = codebase.find_system_assets_by_repo_url(repo_url)
+        if old_system_asset:
+            logger.info(f"该代码仓库存在旧资产")
+            repeat_within = get_repo_change_sets(
+                old_commit=old_system_asset["commit"],
+                old_repo_url=old_system_asset["repo_url"],
+                new_commit=version,
+                new_repo_local_path=repo_path,
+            )
+
+        # 提取语义元素
+        logger.info(f"开始提取代码库语义元素")
         if not (os.path.exists(codebase_path) and os.path.isdir(codebase_path)):
             os.makedirs(codebase_path, exist_ok=True)
-        max_workers = settings.get("codeBaseBuild", {}).get("max_workers", 1)
+        asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv")
+        info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json")
         if max_workers <= 1:
             result = repo_parse_single(
                 repo_path=repo_path,
                 codebase_path=codebase_path,
                 version=version,
+                asset_path=asset_path,
+                info_path=info_path,
+                repeat_within=repeat_within,
+                mask_dirs=mask_dir
             )
         else:
             result = await repo_parse_multy(
@@ -841,6 +863,8 @@ async def edit_temp_asset(
     repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
     version = datetime.now().strftime("%Y%m%d%H%M%S")
     emb_url = settings.get("nlp_emb", {}).get("url")
+    nlp_emb_api = NLPEmbedding(emb_url)
+
     mask = temp_asset["id"] == asset["id"]
     if not mask.any():
         logger.error("临时资产库中不存在对应资产")
@@ -936,7 +960,7 @@ async def edit_temp_asset(
             temp_asset.loc[mask, "summary"] = asset_sum
             temp_asset.loc[mask, "sum_tokenize"] = list(jieba.cut_for_search(asset_sum))
             a = temp_asset.loc[mask, "sum_embedding"]
-            emb = nlp_emb_api(asset_sum, url=emb_url)
+            emb = nlp_emb_api(asset_sum)
             temp_asset.loc[mask, "sum_embedding"] = str(emb)
 
     temp_asset.to_csv(os.path.join(temp_codebase_path, f"{lib}.csv"), index=False)
@@ -1634,5 +1658,3 @@ async def store_asset(
         "message": message,
         "assets": asset,
     }
-
-

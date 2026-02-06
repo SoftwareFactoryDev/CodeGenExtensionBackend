@@ -61,12 +61,9 @@ from function.CodeSearch.code_search import NlRetriever
 from function.CodeBaseBuild.build_codebase import repo_parse_single
 from function.CodeBaseBuild.build_codebase import repo_parse_parallel
 from function.CodeBaseBuild.build_codebase import rm_repo
-from function.CodeBaseBuild.build_codebase import gen_function_sum_single
-from function.CodeBaseBuild.build_codebase import gen_function_sum_multy
-from function.CodeBaseBuild.build_codebase import code_sum_tokenize_single
-from function.CodeBaseBuild.build_codebase import code_sum_tokenize_multy
-from function.CodeBaseBuild.build_codebase import sum_embedding
-from function.CodeBaseBuild.build_codebase import gen_module_sum_multy
+from function.CodeBaseBuild.build_codebase import gen_element_sum_single
+from function.CodeBaseBuild.build_codebase import gen_element_sum_parallel
+from function.CodeBaseBuild.build_codebase import gen_module_sum_parallel
 from function.CodeBaseBuild.build_codebase import gen_module_sum_single
 from function.CodeBaseBuild.build_codebase import gen_repo_sum_single
 from function.CodeBaseBuild.build_codebase import repo_sum_emb_single
@@ -226,7 +223,7 @@ async def repository_parse(
     logger.info(f"可以执行代码库导入")
 
     # 声明必要的变量
-    repeat_within = []
+    repeat_within = None
     old_system_asset = None
     emb_func = NLPEmbedding(emb_url)
     try:
@@ -274,14 +271,20 @@ async def repository_parse(
         if not (os.path.exists(codebase_path) and os.path.isdir(codebase_path)):
             os.makedirs(codebase_path, exist_ok=True)
         repo_name = os.path.basename(repo_path)
-        asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv")
+        function_path = os.path.join(codebase_path, f"{repo_name}_functions_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv")
+        global_var_path = os.path.join(codebase_path, f"{repo_name}_global_var_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv")
+        macro_path = os.path.join(codebase_path, f"{repo_name}_macro_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv")
+        struct_path = os.path.join(codebase_path, f"{repo_name}_struct_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv")
         info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json")
         if max_workers <= 1:
             result = repo_parse_single(
                 repo_path=repo_path,
                 codebase_path=codebase_path,
                 version=version,
-                asset_path=asset_path,
+                function_path=function_path,
+                global_var_path=global_var_path,
+                macro_path=macro_path,
+                struct_path=struct_path,
                 info_path=info_path,
                 repeat_within=repeat_within,
                 mask_dirs=mask_dir
@@ -291,7 +294,7 @@ async def repository_parse(
                 repo_path=repo_path,
                 codebase_path=codebase_path,
                 version=version,
-                asset_path=asset_path,
+                asset_path=function_path,
                 info_path=info_path,
                 repeat_within=repeat_within,
                 mask_dirs=mask_dir,
@@ -300,81 +303,186 @@ async def repository_parse(
         logger.info(f"{result}")
 
         # 生成要素级资产摘要
-        if not os.path.exists(asset_path):
+        if not os.path.exists(function_path):
             logger.error(f"代码资产提取失败，服务已停止")
             return {"message": f"代码资产提取失败，请检查代码资产中是否包含函数"}
-        logger.info(f"开始生成要素级资产摘要")
+        
+        logger.info(f"开始生成函数类要素级资产摘要")
         if max_workers <= 1:
-            result = gen_function_sum_single(
-                asset_path=asset_path, host=host, model=model, key=key
+            result = gen_element_sum_single(
+                asset_path=function_path, host=host, model=model, key=key, type='function_sum'
             )
         else:
-            result = await gen_function_sum_multy(
-                asset_path=asset_path,
+            result = await gen_element_sum_parallel(
+                asset_path=function_path,
                 max_workers=max_workers,
                 host=host,
                 model=model,
                 key=key,
+                type='function_sum'
             )
         logger.info(f"{result}")
 
-        logger.info(
-            f"【{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}】函数级资产摘要预分词"
-        )
+        logger.info(f"开始生成数据结构类要素级资产摘要")
         if max_workers <= 1:
-            result = code_sum_tokenize_single(
-                asset_path=asset_path, stopword_path=stopword_path
+            result = gen_element_sum_single(
+                asset_path=struct_path, host=host, model=model, key=key, type='struct_sum'
             )
         else:
-            result = await code_sum_tokenize_multy(
-                asset_path=asset_path,
-                stopword_path=stopword_path,
-                max_workers=max_workers,
-            )
-        logger.info(f"{result}")
-
-        logger.info(f"函数级资产摘要嵌入")
-        sum_embedding(asset_path=asset_path, url=settings.get("nlp_emb", {}).get("url"))
-        logger.info(f"{result}")
-
-        logger.info(f"开始生成模块级别资产摘要")
-        if max_workers <= 1:
-            result = gen_module_sum_single(
-                asset_path=asset_path,
-                info_path=info_path,
-                host=host,
-                model=model,
-                key=key,
-            )
-        else:
-            result = await gen_module_sum_multy(
-                asset_path=asset_path,
-                info_path=info_path,
+            result = await gen_element_sum_parallel(
+                asset_path=struct_path,
                 max_workers=max_workers,
                 host=host,
                 model=model,
                 key=key,
+                type='struct_sum'
             )
         logger.info(f"{result}")
-        logger.info(f"开始生成系统级资产摘要")
-        result = gen_repo_sum_single(
-            info_path=info_path, host=host, model=model, key=key
-        )
+        logger.info(f"开始生成全局变量类要素级资产摘要")
+        if max_workers <= 1:
+            result = gen_element_sum_single(
+                asset_path=global_var_path, host=host, model=model, key=key, type='global_var_sum'
+            )
+        else:
+            result = await gen_element_sum_parallel(
+                asset_path=global_var_path,
+                max_workers=max_workers,
+                host=host,
+                model=model,
+                key=key,
+                type='global_var_sum'
+            )
+        logger.info(f"{result}")
+        logger.info(f"开始生成宏定义类要素级资产摘要")
+        if max_workers <= 1:
+            result = gen_element_sum_single(
+                asset_path=global_var_path, host=host, model=model, key=key, type='macro_sum'
+            )
+        else:
+            result = await gen_element_sum_parallel(
+                asset_path=global_var_path,
+                max_workers=max_workers,
+                host=host,
+                model=model,
+                key=key,
+                type='macro_sum'
+            )
         logger.info(f"{result}")
 
-        logger.info(f"开始生成模块、系统级资产嵌入")
-        result = repo_sum_emb_single(
-            info_path=info_path, url=settings.get("nlp_emb", {}).get("url")
-        )
-        logger.info(f"{result}")
+        # 如果不存在旧的系统资产，则直接生成模块级别和系统级别的资产摘要，并且将新的资产写入codebase
+        if not old_system_asset:
+            logger.info(f"开始生成模块级别资产摘要")
+            if max_workers <= 1:
+                result = gen_module_sum_single(
+                    function_path=function_path,
+                    info_path=info_path,
+                    host=host,
+                    model=model,
+                    key=key,
+                )
+            else:
+                result = await gen_module_sum_parallel(
+                    asset_path=function_path,
+                    info_path=info_path,
+                    max_workers=max_workers,
+                    host=host,
+                    model=model,
+                    key=key,
+                )
+            logger.info(f"{result}")
+            logger.info(f"开始生成系统级资产摘要")
+            result = gen_repo_sum_single(
+                info_path=info_path, host=host, model=model, key=key
+            )
+            logger.info(f"{result}")
+            # 添加要素级资产
+            all_asset = []
+            repo_name = os.path.basename(repo_path)
+            function_base = pd.read_csv(function_path).to_dict(orient='records')
+            all_asset.extend(function_base)
+            global_var_base = pd.read_csv(global_var_path).to_dict(orient='records')
+            all_asset.extend(global_var_base)
+            macro_base = pd.read_csv(macro_path).to_dict(orient='records')
+            all_asset.extend(macro_base)
+            struct_base = pd.read_csv(struct_path).to_dict(orient='records')
+            all_asset.extend(struct_base)
+            codebase.add_system_asset(all_asset, stopword_path=stopword_path)
+            codebase.add_module_asset(result, stopword_path=stopword_path)
+            # 添加模块级资产
+            info = json.load(open(info_path, "r", encoding="utf-8"))
+            info['repo_url'] = repo_url
+            all_module = info['modules']
+            codebase.add_module_asset(all_module)
+            # 添加系统级资产
+            system_asset = {
+                'id':info['id'],
+                'name':info['name'],
+                'description':info['description'],
+                'repo_url':repo_url,
+                'version':version
+            }
+            codebase.add_system_asset(system_asset)
+        else:
+            logger.info(f"检测到旧系统资产，执行增量更新流程")
+            # 1. 更新所有新提取资产的repo字段为旧系统ID
+            old_system_id = old_system_asset["id"]
+            def update_repo_in_csv(path, repo_id):
+                if os.path.exists(path):
+                    df = pd.read_csv(path)
+                    if 'repo' in df.columns:
+                        df['repo'] = repo_id
+                        df.to_csv(path, index=False, encoding='utf-8')
+            for asset_path in [function_path, global_var_path, macro_path, struct_path]:
+                update_repo_in_csv(asset_path, old_system_id)
+            # 更新info.json中的modules.repo和系统repo信息
+            with open(info_path, 'r', encoding='utf-8') as f:
+                info_data = json.load(f)
+            for module in info_data.get('modules', []):
+                module['repo'] = old_system_id
+            info_data['id'] = old_system_id
+            with open(info_path, 'w', encoding='utf-8') as f:
+                json.dump(info_data, f, ensure_ascii=False, indent=2)
+            # 2. 处理模块ID映射（仅当存在变更目录交集时）
+            module_id_map = {}
+            if repeat_within and 'new_changed_directories' in repeat_within and 'old_changed_directories' in repeat_within:
+                new_dirs = set(repeat_within['new_changed_directories'])
+                old_dir_map = {item['path']: item['module_id'] for item in repeat_within['old_changed_directories'] if 'path' in item and 'module_id' in item}
+                # 构建路径到旧模块ID的映射（仅处理交集目录）
+                for path, old_mid in old_dir_map.items():
+                    if path in new_dirs:
+                        # 在info_data.modules中查找对应路径的新模块
+                        for module in info_data['modules']:
+                            if module.get('name') == path:  # 假设模块含path字段标识目录
+                                new_mid =deepcopy(module['id'])
+                                module_id_map[new_mid] = old_mid
+                                module['id'] = old_mid  # 直接替换模块ID
+                                logger.info(f"模块ID映射: {new_mid} -> {old_mid} (目录: {path})")
+                                break
+                
+                # 更新CSV中所有要素的module字段
+                def update_module_in_csv(path, id_map):
+                    if os.path.exists(path):
+                        df = pd.read_csv(path)
+                        if 'module' in df.columns and not df.empty:
+                            df['module'] = df['module'].apply(lambda x: id_map.get(x, x))
+                            df.to_csv(path, index=False, encoding='utf-8')
+                
+                for asset_path in [function_path, global_var_path, macro_path, struct_path]:
+                    update_module_in_csv(asset_path, module_id_map)
+            # Todo: 删除codebase中old_changed_files对应的要素级资产
+            # Todo: 读取old_changed_directories对应的要素级别资产，并将这些资产的信息附加到，function_path/global_var_path/struct_path/macro_path中的对应文件夹的后面
+            # Todo: 重新生成系统级、模块级别资产描述
+            # Todo: 更新codebase中的系统级、模块级资产描述，增加要素级资产
 
-        repo_name = os.path.basename(repo_path)
-        codebase = pd.read_csv(asset_path)
-        info = json.load(open(info_path, "r", encoding="utf-8"))
     finally:
         build_lock.release()
         is_building = False
         rm_repo(repo_path)
+        os.remove(function_path)
+        os.remove(global_var_path)
+        os.remove(macro_path)
+        os.remove(struct_path)
+        os.remove(info_path)
     logger.info(
         f"代码库构建完成: {os.path.basename(repo_path)}, 提交版本：{version}, 系统概述：{info['description']},模块数量：{len(info['modules'])},总共解析函数数目: {len(codebase)}"
     )
@@ -703,7 +811,7 @@ async def import_assets(
 
                 logger.info(f"开始生成模块级别资产摘要")
                 result = gen_module_sum_single(
-                    asset_path=asset_path,
+                    function_path=asset_path,
                     info_path=info_path,
                     target_module=target_module,
                     host=host,
@@ -746,7 +854,7 @@ async def import_assets(
                 info_path = info_path_new
                 logger.info(f"开始生成模块级别资产摘要")
                 result = gen_module_sum_single(
-                    asset_path=asset_path,
+                    function_path=asset_path,
                     info_path=info_path,
                     host=host,
                     model=model,
@@ -1653,3 +1761,4 @@ async def store_asset(
         "message": message,
         "assets": asset,
     }
+

@@ -1,4 +1,5 @@
 from copy import deepcopy
+import uuid
 import os
 import clang.cindex as cl
 from function.CodeBaseBuild.llm_gen import generate_api
@@ -125,9 +126,11 @@ class CParser:
                     source_code += "".join(content[line][: end.column - 1])
                 else:
                     source_code += content[line]
+        id = str(uuid.uuid1()).replace("-", "")
         return {
-            "id": f"func_{os.path.basename(self.file_path)}_{cursor.extent.start.line}_{cursor.spelling}",
+            "id": f"func_{id}",
             "name": func_name,
+            "class": "function",
             "return_type": result_type,
             "signature": signature,
             "params": [
@@ -171,11 +174,12 @@ class CParser:
                 members.append(f"{child.spelling}-{val}")
 
         source_code = self._extract_source_code(cursor.extent.start, cursor.extent.end)
-
+        id = str(uuid.uuid1()).replace("-", "")
         return {
-            "id": f"struct_{os.path.basename(self.file_path)}_{cursor.extent.start.line}_{tag}",
+            "id": f"struct_{id}",
             "name": name,
             "type": asset_type,
+            "class": "struct",
             "tag": tag,
             "description": "",
             "source_code": source_code,
@@ -189,11 +193,13 @@ class CParser:
 
     def parse_global(self, cursor):
         source_code = self._extract_source_code(cursor.extent.start, cursor.extent.end)
+        id = str(uuid.uuid1()).replace("-", "")
         return {
-            "id": f"global_{os.path.basename(self.file_path)}_{cursor.extent.start.line}_{cursor.spelling}",
+            "id": f"global_{id}",
             "name": cursor.spelling,
             "type": cursor.type.spelling,
             "description": "",
+            "class":"global_var",
             "source_code": source_code,
             "extent": f"{cursor.extent.start.line}-{cursor.extent.end.line}",
             "file_path": self.file_path,
@@ -214,11 +220,13 @@ class CParser:
             if len(lines) > 1:
                 value += "\n" + "\n".join(lines[1:])
 
+        id = str(uuid.uuid1()).replace("-", "")
         return {
-            "id": f"macro_{os.path.basename(self.file_path)}_{cursor.extent.start.line}_{cursor.spelling}",
+            "id": f"macro_{id}",
             "name": cursor.spelling,
             "value": value,
             "description": "",
+            "class":"macro",
             "source_code": source_code,
             "docstring": (cursor.raw_comment.strip() if cursor.raw_comment else ""),
             "extent": f"{cursor.extent.start.line}-{cursor.extent.end.line}",

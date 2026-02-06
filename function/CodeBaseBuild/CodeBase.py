@@ -103,170 +103,139 @@ class CodeBase:
                 self.logger.error(f"系统资产添加失败 {asset['id']}: {str(e)}")
                 return False
 
-    def add_module_asset(self, asset: Dict[str, Any]) -> bool:
-        """添加/更新模块级资产"""
-        required = {"id", "name", "description", "path", "repo"}
-        if not required.issubset(asset.keys()):
-            raise ValueError(f"模块资产缺少必要字段: {required - asset.keys()}")
+    def add_module_asset(self, assets: List[Dict[str, Any]]) -> bool:
+        """
+        批量添加/更新模块级资产
+
+        Args:
+            assets: 模块资产字典列表，每个字典需包含必要字段
+
+        Returns:
+            bool: 是否全部添加成功
+        """
+        required = {"id", "name", "description", "repo"}
+
+        # 验证所有资产的必要字段
+        for asset in assets:
+            if not required.issubset(asset.keys()):
+                raise ValueError(
+                    f"模块资产 {asset.get('id', 'unknown')} 缺少必要字段: {required - asset.keys()}"
+                )
 
         with self.lock:
             try:
                 self.module_coll.add(
-                    ids=[asset["id"]],
-                    documents=[asset["description"]],
-                    metadatas=[asset],
+                    ids=[asset["id"] for asset in assets],
+                    documents=[asset["description"] for asset in assets],
+                    metadatas=assets,
                 )
-                self.logger.info(f"模块资产添加成功: {asset['id']}")
+
+                success_count = len(assets)
+                self.logger.info(f"批量添加模块资产成功: {success_count} 条记录")
                 return True
+
             except Exception as e:
-                self.logger.error(f"模块资产添加失败 {asset['id']}: {str(e)}")
+                self.logger.error(f"批量添加模块资产失败: {str(e)}")
                 return False
 
-    def add_element_asset(self, asset: Dict[str, Any]) -> bool:
+    def add_element_asset(self, assets, stopword_path=None) -> bool:
         """
-        添加/更新要素级资产（自动处理中文分词用于BM25）
+        批量添加/更新要素级资产（自动处理中文分词用于BM25）
         支持函数/数据结构/全局变量/宏定义四种子类型
+
+        Args:
+            assets: 资产字典列表，每个字典需包含必要字段
+            stopword_path: 停用词文件路径（可选）
+
+        Returns:
+            bool: 是否全部添加成功
         """
-        required = {"id", "description", "source_code", "module", "repo"}
-        if not required.issubset(asset.keys()):
-            raise ValueError(f"要素资产缺少必要字段: {required - asset.keys()}")
+        required = {
+            "id",
+            "description",
+            "source_code",
+            "module",
+            "repo",
+            "file_path",
+            "docstring",
+            "source_code",
+            "extent",
+        }
 
-        # 为BM25检索预处理：添加分词后的文档（ChromaDB 0.4.22+ 支持）
-        tokenized_desc = " ".join(list(jieba.cut_for_search(asset["description"])))
+        # 验证所有资产的必要字段
+        for asset in assets:
+            if not required.issubset(asset.keys()):
+                raise ValueError(
+                    f"要素资产 {asset.get('id', 'unknown')} 缺少必要字段: {required - asset.keys()}"
+                )
 
+        # 加载停用词（如果提供）
+        stopwords = set()
+        if stopword_path:
+            with open(stopword_path, "r", encoding="utf-8") as f:
+                stopwords = set(f.read().splitlines())
+
+        # 批量处理分词
+        processed_assets = []
+        for asset in assets:
+            tokenized_desc = " ".join(list(jieba.cut_for_search(asset["description"])))
+            if stopwords:
+                tokenized_desc = " ".join(
+                    token for token in tokenized_desc.split() if token not in stopwords
+                )
+
+            processed_assets.append(
+                {
+                    "id": asset["id"],
+                    "document": asset["description"],
+                    "metadata": {**asset, "_tokenized_desc": tokenized_desc},
+                }
+            )
+
+        # 批量添加资产
         with self.lock:
             try:
                 self.element_coll.add(
-                    ids=[asset["id"]],
-                    documents=[asset["description"]],  # 向量检索用
-                    metadatas=[
-                        {**asset, "_tokenized_desc": tokenized_desc}  # BM25检索关键字段
-                    ],
+                    ids=[asset["id"] for asset in processed_assets],
+                    documents=[asset["document"] for asset in processed_assets],
+                    metadatas=[asset["metadata"] for asset in processed_assets],
                 )
-                self.logger.info(
-                    f"要素资产添加成功: {asset['id']} | 类型: {asset.get('type', 'function')}"
-                )
+
+                success_count = len(processed_assets)
+                self.logger.info(f"批量添加要素资产成功: {success_count} 条记录")
                 return True
+
             except Exception as e:
-                self.logger.error(f"要素资产添加失败 {asset['id']}: {str(e)}")
+                self.logger.error(f"批量添加要素资产失败: {str(e)}")
                 return False
 
-    def delete_element_asset(self, element_id: str) -> bool:
-        """删除要素资产，并级联更新/删除父级资产"""
-        with self.lock:
-            try:
-                # 1. 获取要素信息（删除前）
-                result = self.element_coll.get(ids=[element_id], include=["metadatas"])
-                if not result["ids"]:
-                    self.logger.warning(f"要素资产不存在: {element_id}")
-                    return False
-
-                meta = result["metadatas"][0]
-                module_id = meta["module"]
-                repo_id = meta["repo"]
-
-                # 2. 删除要素
-                self.element_coll.delete(ids=[element_id])
-                self.logger.info(f"要素资产已删除: {element_id}")
-
-                # 3. 检查模块是否还有子要素
-                module_elements = self.element_coll.get(
-                    where={"module": module_id}, include=[]
-                )
-                module_has_children = len(module_elements["ids"]) > 0
-
-                # 4. 更新模块description（通过钩子）
-                if not module_has_children:
-                    # 模块无子要素，删除模块
-                    self.module_coll.delete(ids=[module_id])
-                    self.logger.info(f"级联删除空模块: {module_id}")
-                elif self.update_module_hook:
-                    # 有钩子则调用更新
-                    old_module = self.module_coll.get(
-                        ids=[module_id], include=["metadatas"]
-                    )["metadatas"][0]
-                    new_desc = self.update_module_hook(
-                        module_id,
-                        old_module["description"],
-                        {
-                            "deleted_element": element_id,
-                            "remaining_count": len(module_elements["ids"]),
-                        },
-                    )
-                    if new_desc and new_desc != old_module["description"]:
-                        old_module["description"] = new_desc
-                        self.module_coll.update(
-                            ids=[module_id],
-                            documents=[new_desc],
-                            metadatas=[old_module],
-                        )
-                        self.logger.info(f"模块description已更新: {module_id}")
-
-                # 5. 检查系统是否还有子模块/要素
-                system_modules = self.module_coll.get(
-                    where={"repo": repo_id}, include=[]
-                )
-                system_elements = self.element_coll.get(
-                    where={"repo": repo_id}, include=[]
-                )
-                system_has_children = (
-                    len(system_modules["ids"]) > 0 or len(system_elements["ids"]) > 0
-                )
-
-                if not system_has_children:
-                    self.system_coll.delete(ids=[repo_id])
-                    self.logger.info(f"级联删除空系统: {repo_id}")
-                elif self.update_system_hook:
-                    old_system = self.system_coll.get(
-                        ids=[repo_id], include=["metadatas"]
-                    )["metadatas"][0]
-                    new_desc = self.update_system_hook(
-                        repo_id,
-                        old_system["description"],
-                        {
-                            "deleted_element": element_id,
-                            "modules_remaining": len(system_modules["ids"]),
-                        },
-                    )
-                    if new_desc and new_desc != old_system["description"]:
-                        old_system["description"] = new_desc
-                        self.system_coll.update(
-                            ids=[repo_id], documents=[new_desc], metadatas=[old_system]
-                        )
-                        self.logger.info(f"系统description已更新: {repo_id}")
-
-                return True
-            except Exception as e:
-                self.logger.error(f"删除要素资产失败 {element_id}: {str(e)}")
-                return False
-        
     def _delete_system_asset_and_related(self, system_id: str) -> bool:
         """
         删除系统资产及其所有相关的模块和要素资产
-        
+
         Args:
             system_id: 系统资产ID
-            
+
         Returns:
             bool: 删除是否成功
         """
         try:
             modules = self.module_coll.get(
-                where={"repo": system_id},
-                include=["metadatas"]
+                where={"repo": system_id}, include=["metadatas"]
             )
 
             # 2. 删除每个模块的所有要素
             for module_meta in modules.get("metadatas", []):
                 module_id = module_meta["id"]
                 elements = self.element_coll.get(
-                    where={"module": module_id},
-                    include=["metadatas"]
+                    where={"module": module_id}, include=["metadatas"]
                 )
                 # 删除要素
                 if elements["ids"]:
                     self.element_coll.delete(ids=elements["ids"])
-                    self.logger.info(f"删除模块 {module_id} 的 {len(elements['ids'])} 个要素")
+                    self.logger.info(
+                        f"删除模块 {module_id} 的 {len(elements['ids'])} 个要素"
+                    )
                 # 删除模块
                 self.module_coll.delete(ids=[module_id])
                 self.logger.info(f"删除模块: {module_id}")
@@ -292,7 +261,9 @@ class CodeBase:
             去重后的检索结果
         """
         if not repo_url or not isinstance(repo_url, str):
-            self.logger.warning("find_system_assets_by_repo_url: 无效输入（空或非字符串）")
+            self.logger.warning(
+                "find_system_assets_by_repo_url: 无效输入（空或非字符串）"
+            )
             return []
 
         normalized_input = self._normalize_repo_url(repo_url)
@@ -307,26 +278,30 @@ class CodeBase:
                 # 获取所有匹配的系统资产
                 all_systems = self.system_coll.get(include=["metadatas"])
                 matched_assets = []
-                
+
                 for meta in all_systems.get("metadatas", []):
                     stored_url = meta.get("repo_url", "")
                     if not stored_url:
                         continue
-                        
+
                     normalized_stored = self._normalize_repo_url(stored_url)
                     if normalized_stored == normalized_input:
                         asset_id = meta.get("id", "").strip()
                         if not asset_id:
-                            self.logger.warning(f"匹配到仓库地址但资产id为空，跳过 | 原始URL: {stored_url}")
+                            self.logger.warning(
+                                f"匹配到仓库地址但资产id为空，跳过 | 原始URL: {stored_url}"
+                            )
                             continue
-                            
-                        matched_assets.append({
-                            "id": asset_id,
-                            "name": meta.get("name", "").strip(),
-                            "version": meta.get("version", "").strip(),
-                            "commit": meta.get("commit", "").strip(),
-                            "repo_url": meta.get("repo_url", "").strip()
-                        })
+
+                        matched_assets.append(
+                            {
+                                "id": asset_id,
+                                "name": meta.get("name", "").strip(),
+                                "version": meta.get("version", "").strip(),
+                                "commit": meta.get("commit", "").strip(),
+                                "repo_url": meta.get("repo_url", "").strip(),
+                            }
+                        )
 
                 if not matched_assets:
                     self.logger.info(f"未找到匹配的系统资产: {repo_url}")
@@ -334,7 +309,9 @@ class CodeBase:
 
                 # 如果只有一个匹配项，直接返回
                 if len(matched_assets) == 1:
-                    self.logger.info(f"找到唯一匹配的系统资产: {matched_assets[0]['id']}")
+                    self.logger.info(
+                        f"找到唯一匹配的系统资产: {matched_assets[0]['id']}"
+                    )
                     return [self._format_asset_info(matched_assets[0])]
 
                 matched_assets.sort(key=lambda x: x["commit"], reverse=True)

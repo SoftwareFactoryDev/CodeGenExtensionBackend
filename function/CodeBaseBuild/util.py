@@ -102,12 +102,17 @@ def json_parse(content):
     return None
 
 
-def asset_in_module(asset_list):
+def asset_in_module(function_list, global_var_list, macro_list, struct_list):
 
     asset_info = ""
-    for index, item in asset_list.iterrows():
-        asset_info += f'* 函数名：{item["name"]} 所属文件:{item["file_path"]} 函数签名:{item["signature"]} 功能描述:{item["summary"]}\n'
-
+    for index, item in function_list.iterrows():
+        asset_info += f'* 函数名：{item["name"]} 所属文件:{item["file_path"]} 函数签名:{item["signature"]} 功能描述:{item["description"]}\n'
+    for index, item in global_var_list.iterrows():
+        asset_info += f'* 函数名：{item["name"]} 所属文件:{item["file_path"]} 声明语句:{item["source_code"]} 属性描述:{item["description"]}\n'
+    for index, item in macro_list.iterrows():
+        asset_info += f'* 函数名：{item["name"]} 所属文件:{item["file_path"]} 声明语句:{item["source_code"]} 属性描述:{item["description"]}\n'
+    for index, item in struct_list.iterrows():
+        asset_info += f'* 函数名：{item["name"]} 所属文件:{item["file_path"]} 声明语句:{item["source_code"]} 属性描述:{item["description"]}\n'
     return asset_info
 
 
@@ -272,3 +277,4 @@ def get_repo_change_sets(
         "new_changed_files": sorted(new_files),
         "new_changed_directories": _extract_dirs(new_files)
     }
+

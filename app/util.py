@@ -8,7 +8,7 @@ import pandas as pd
 
 from app.models import TempAsset, Asset
 from app.logger import logger_global
-from function.CodeBaseBuild.build_codebase import gen_function_sum_single, repo_parse_single, code_sum_tokenize_single, sum_embedding, rm_repo
+from function.CodeBaseBuild.build_codebase import gen_element_sum_single, repo_parse_parallel, code_sum_tokenize_single, sum_embedding, rm_repo
 def get_encode(file_path):
     """
     获取文件的编码方式
@@ -72,7 +72,7 @@ def process_temp_asset(repo_path, file_path, code, codebase_path, version, stopw
     logger.info(f"开始提取代码资产")
     if not (os.path.exists(codebase_path) and os.path.isdir(codebase_path)):
         os.makedirs(codebase_path, exist_ok=True)
-    result = repo_parse_single(
+    result = repo_parse_parallel(
         repo_path=repo_path, codebase_path=codebase_path, version=version, add=True
     )
     repo_name = os.path.basename(repo_path)
@@ -80,7 +80,7 @@ def process_temp_asset(repo_path, file_path, code, codebase_path, version, stopw
     info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}.json")
     logger.info(f"{result}")
     logger.info(f"开始生成函数级资产摘要")
-    result = gen_function_sum_single(asset_path=asset_path, host=host, model=model, key=key)
+    result = gen_element_sum_single(element_path=asset_path, host=host, model=model, key=key)
     logger.info(f"{result}")
     logger.info(f"函数级资产摘要预分词")
     result = code_sum_tokenize_single(

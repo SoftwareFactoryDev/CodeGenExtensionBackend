@@ -6,13 +6,10 @@ import shutil
 import stat
 import asyncio
 import threading
-import concurrent.futures
-from typing import List
 
 from git import Repo
 from copy import deepcopy
 import jieba
-import clang.cindex as cl
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -28,10 +25,10 @@ from function.CodeBaseBuild.prompt import repo_sum_template
 from function.CodeBaseBuild.util import json_parse
 from app.logger import logger_global
 
-thread_local = threading.local()
 
-
-def repo_parse_single(repo_path, version,asset_path, info_path, repeat_within={}, mask_dirs=[]):
+def repo_parse_single(
+    repo_path, version, asset_path, info_path, repeat_within=None, mask_dirs=[]
+):
     """
     解析单个代码仓库，提取代码资产并生成代码库信息
 
@@ -39,6 +36,10 @@ def repo_parse_single(repo_path, version,asset_path, info_path, repeat_within={}
         repo_path (str): 代码仓库的路径
         codebase_path (str): 存储解析结果的代码库路径
         version (str): 代码仓库的版本号(commit hash)
+        asset_path (str) : 存储代码资产的路径
+        info_path (str): 存储代码库信息的路径
+        repeat_within (dict, optional): 重复检测的配置信息. Defaults to None.
+        mask_dirs (list, optional): 需要屏蔽的文件夹列表. Defaults to [].
         add (bool): 是否为增量添加模式，默认为False
 
     Returns:
@@ -56,9 +57,62 @@ def repo_parse_single(repo_path, version,asset_path, info_path, repeat_within={}
     else:
 
         # 获取所有C语言源文件和头文件
+        # 处理mask_dirs：转换为规范化的绝对路径，并确保以路径分隔符结尾用于前缀匹配
+        mask_dirs_abs = []
+        for mask_dir in mask_dirs:
+            abs_mask = os.path.abspath(os.path.join(repo_path, mask_dir))
+            if not abs_mask.endswith(os.sep):
+                abs_mask += os.sep
+            mask_dirs_abs.append(abs_mask)
+
+        # 确定搜索根目录：若repeat_within含有效new_changed_directories则限定范围，否则搜索整个仓库
+        if (
+            repeat_within
+            and isinstance(repeat_within, dict)
+            and "new_changed_directories" in repeat_within
+            and repeat_within["new_changed_directories"]
+        ):
+            search_dirs = [
+                os.path.abspath(os.path.join(repo_path, d)) if d != "." else repo_path
+                for d in repeat_within["new_changed_directories"]
+            ]
+            if repo_path not in search_dirs:
+                search_dirs.append(repo_path)
+        else:
+            search_dirs = [repo_path]
+
+        # 获取所有.c和.h文件
         c_files = glob.glob(f"{repo_path}/**/*.c", recursive=True)
         h_files = glob.glob(f"{repo_path}/**/*.h", recursive=True)
         all_files = c_files + h_files
+
+        # 过滤mask_dirs：屏蔽指定文件夹路径下的文件
+        abs_mask_dirs = []
+        for md in mask_dirs:
+            abs_md = os.path.abspath(os.path.join(repo_path, md))
+            if not abs_md.endswith(os.sep):
+                abs_md += os.sep
+            abs_mask_dirs.append(abs_md)
+
+        filtered_files = []
+        for file_path in all_files:
+            abs_file_path = os.path.abspath(file_path)
+            if not any(abs_file_path.startswith(abs_md) for abs_md in abs_mask_dirs):
+                filtered_files.append(file_path)
+
+        # 若repeat_within存在，进一步筛选仅保留new_changed_files中的文件
+        if repeat_within is not None:
+            new_changed_files = repeat_within.get("new_changed_files", [])
+            new_changed_abs_set = {
+                os.path.abspath(os.path.join(repo_path, f)) for f in new_changed_files
+            }
+            all_files = [
+                fp
+                for fp in filtered_files
+                if os.path.abspath(fp) in new_changed_abs_set
+            ]
+        else:
+            all_files = filtered_files
 
         # 创建C语言解析器实例
         c_parser = CParser()
@@ -109,12 +163,6 @@ def repo_parse_single(repo_path, version,asset_path, info_path, repeat_within={}
         result = f"代码库{os.path.basename(repo_path)}(Commit版本：{version})解析完成,代码库信息：{info_path}，代码资产：{asset_path}"
 
     return result
-
-
-def get_prompt_template():
-    if not hasattr(thread_local, "prompt_template"):
-        thread_local.prompt_template = function_sum_template
-    return thread_local.prompt_template
 
 
 def process_single_row(args):

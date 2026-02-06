@@ -59,15 +59,13 @@ from function.CodeBaseBuild.build_codebase import get_repository
 from function.CodeSearch.code_search import code_search_custom
 from function.CodeSearch.code_search import NlRetriever
 from function.CodeBaseBuild.build_codebase import repo_parse_single
-from function.CodeBaseBuild.build_codebase import repo_parse_multy
+from function.CodeBaseBuild.build_codebase import repo_parse_parallel
 from function.CodeBaseBuild.build_codebase import rm_repo
 from function.CodeBaseBuild.build_codebase import gen_function_sum_single
 from function.CodeBaseBuild.build_codebase import gen_function_sum_multy
 from function.CodeBaseBuild.build_codebase import code_sum_tokenize_single
 from function.CodeBaseBuild.build_codebase import code_sum_tokenize_multy
 from function.CodeBaseBuild.build_codebase import sum_embedding
-from function.CodeBaseBuild.build_codebase import code_embedding_single
-from function.CodeBaseBuild.build_codebase import code_embedding_multy
 from function.CodeBaseBuild.build_codebase import gen_module_sum_multy
 from function.CodeBaseBuild.build_codebase import gen_module_sum_single
 from function.CodeBaseBuild.build_codebase import gen_repo_sum_single
@@ -76,23 +74,17 @@ from function.CodeBaseBuild.CodeBase import CodeBase
 from function.CodeBaseBuild.util import scan_repo_structure
 from function.CodeBaseBuild.util import get_repo_change_sets
 from function.CodeGeneration.prompt import (
-    code_gen_instruct,
     code_gen_edit,
     code_gen_mulreq,
 )
 from function.CodeGeneration.util import asset_content
 from function.CodeGeneration.generation import generate_api
-from function.CodeGeneration.util import json_parse
 from function.CodeGeneration.util import code_parse
 from function.CodeGeneration.util import info_parse
 from function.CodeCheck.prompt import code_check
-from function.CodeCheck.util import err_parse, compare_code
 from function.CodeBaseBuild.util import gen_code_sum
-from function.CodeBaseBuild.build_codebase import string_parse_new
-from function.CodeBaseBuild.build_codebase import string_parse_old
 from app.logger import logger_global
 from function.CodeBaseBuild.llm_gen import NLPEmbedding
-from function.CodeCheck.util import err_list_parse
 from function.CodeCheck.code_check import build_in_check
 
 router = APIRouter()
@@ -209,11 +201,15 @@ async def repository_parse(
     settings = deepcopy(settings)["config"] if "config" in settings.keys() else settings
     stopword_path = settings.get("codeBaseBuild", {}).get("stopwordPath")
     codebase_path = settings.get("codeBaseBuild", {}).get("codebasePath")
+    host = settings.get("llm", {}).get("url")
+    model = settings.get("llm", {}).get("model")
+    key = settings.get("llm", {}).get("key")
     emb_url = settings.get("nlp_emb", {}).get("url")
+    repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
+    max_workers = settings.get("codeBaseBuild", {}).get("max_workers", 1)
 
     # 声明logger对象
     logger = deepcopy(logger_global)
-    repo_path = ""
     logger.info(f"接收到代码库导入请求")
 
     # 加载请求信息
@@ -232,8 +228,6 @@ async def repository_parse(
     # 声明必要的变量
     repeat_within = []
     old_system_asset = None
-    repo_path = settings.get("codeBaseBuild", {}).get("repoPath", "./repo")
-    max_workers = settings.get("codeBaseBuild", {}).get("max_workers", 1)
     emb_func = NLPEmbedding(emb_url)
     try:
         # 代码仓库上锁
@@ -279,6 +273,7 @@ async def repository_parse(
         logger.info(f"开始提取代码库语义元素")
         if not (os.path.exists(codebase_path) and os.path.isdir(codebase_path)):
             os.makedirs(codebase_path, exist_ok=True)
+        repo_name = os.path.basename(repo_path)
         asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.csv")
         info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json")
         if max_workers <= 1:
@@ -292,23 +287,23 @@ async def repository_parse(
                 mask_dirs=mask_dir
             )
         else:
-            result = await repo_parse_multy(
+            result = await repo_parse_parallel(
                 repo_path=repo_path,
                 codebase_path=codebase_path,
                 version=version,
-                max_workers=max_workers,
+                asset_path=asset_path,
+                info_path=info_path,
+                repeat_within=repeat_within,
+                mask_dirs=mask_dir,
+                max_workers=max_workers
             )
-        repo_name = os.path.basename(repo_path)
-        asset_path = os.path.join(codebase_path, f"{repo_name}_assets_v_{version}.csv")
-        info_path = os.path.join(codebase_path, f"{repo_name}_info_v_{version}.json")
         logger.info(f"{result}")
-        host = settings.get("llm", {}).get("url")
-        model = settings.get("llm", {}).get("model")
-        key = settings.get("llm", {}).get("key")
+
+        # 生成要素级资产摘要
         if not os.path.exists(asset_path):
             logger.error(f"代码资产提取失败，服务已停止")
             return {"message": f"代码资产提取失败，请检查代码资产中是否包含函数"}
-        logger.info(f"开始生成函数级资产摘要")
+        logger.info(f"开始生成要素级资产摘要")
         if max_workers <= 1:
             result = gen_function_sum_single(
                 asset_path=asset_path, host=host, model=model, key=key

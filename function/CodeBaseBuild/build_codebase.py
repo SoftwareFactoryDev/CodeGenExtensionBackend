@@ -213,8 +213,8 @@ def repo_parse_single_multithread(
     struct_path: str,
     macro_path: str,
     info_path: str,
-    repeat_within: Optional[Dict[str, Any]] = None,
-    mask_dirs: Optional[List[str]] = None,
+    repeat_within,
+    mask_dirs,
     workers: int = 4,
 ) -> str:
     """
@@ -297,7 +297,7 @@ def repo_parse_single_multithread(
         filtered_files = []  # 显式置空
 
     # ========== 步骤3: 多线程解析文件 ==========
-    def _parse_single_file(file_abs_path: str) -> Dict[str, Any]:
+    def _parse_single_file(file_abs_path: str):
         """线程安全的单文件解析任务（闭包捕获repo_path, repo_name）"""
         thread_logger = deepcopy(logger_global)  # 线程隔离日志
         try:
@@ -1434,20 +1434,6 @@ def gen_repo_sum_single(
     with open(info_path, "w", encoding="utf-8") as f:
         json.dump(repo_info, f, ensure_ascii=False, indent=4)
     return f"成功生成模块级代码资产功能描述"
-
-def repo_sum_emb_single(info_path, url=None, target_module=None):
-    with open(info_path, "r", encoding="utf-8") as f:
-        repo_info = json.load(f)
-    if len(repo_info["description"]) == 0:
-        return f"代码库{os.path.basename(info_path)}不包含模块，跳过功能描述分词步骤。"
-    repo_info["desp_emb"] = nlp_emb_api(repo_info["description"], url=url)
-    for module in repo_info.get("modules", []):
-        if target_module and module["name"] != target_module:
-            continue
-        module["desp_emb"] = nlp_emb_api(module["description"], url=url)
-    with open(info_path, "w", encoding="utf-8") as f:
-        json.dump(repo_info, f, ensure_ascii=False, indent=4)
-    return f"成功完成系统级资产预分词"
 
 def string_parse_new(codestring, repo_name, codebase_path, version, file_path):
     logger = deepcopy(logger_global)
